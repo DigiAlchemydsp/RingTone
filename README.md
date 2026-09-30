@@ -37,12 +37,9 @@ The signal chain is **ring → EQ → fold**, then the output meter:
 ## Use
 
 The page lives on the master page tree: **FUNC + LFO** cycles the master pages,
-and the **fourth entry** is **DIGI FX**.
-
-![The master page tree (FUNC+LFO), before the DIGI FX entry](docs/img/master-mix.png)
-
-Encoders **A–H** edit EQ on / low / high, ring on / depth / frequency, fold on /
-amount; **LEVEL** toggles the meter. The effects are on by default.
+and the **fourth entry** is **DIGI FX**. Encoders **A–H** edit EQ on / low /
+high, ring on / depth / frequency, fold on / amount; **LEVEL** toggles the meter.
+The effects are on by default.
 
 ## Layout
 
