@@ -78,9 +78,9 @@ python -m elekloader.patch --stock $stock --mod $core `
 
 ## Status
 
-**Work in progress.** Tested in the **digiemu** emulator (boots, settles,
-`dsp_running=2`; the page draws as the fourth master entry). **Not yet tested on
-hardware.** Upcoming fixes:
+**Work in progress.** **Tested on hardware** (a Digitone mk1) and in the
+**digiemu** emulator (boots, settles, `dsp_running=2`; the page draws as the
+fourth master entry). Upcoming fixes:
 
 - **encoder acceleration** for the parameters;
 - **saving the state on the pattern level** (the settings currently reset at

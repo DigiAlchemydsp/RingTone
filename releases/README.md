@@ -45,8 +45,8 @@ for the startup menu, press **TRIG 4 (OS UPGRADE)**, then send the stock
 
 ## Status and caveats
 
-- Tested in the **digiemu** emulator (boots, settles, `dsp_running=2`; the page
-  draws as the fourth master entry). **Not yet tested on hardware.**
+- **Tested on hardware** (a Digitone mk1) and in the **digiemu** emulator (boots,
+  settles, `dsp_running=2`; the page draws as the fourth master entry).
 - **Settings are not saved per pattern yet** — they reset at power-off.
   Per-pattern persistence (in the kit) is the open item.
 - The DIGI FX page is opened by FUNC+LFO; the emulator's key-injection harness
