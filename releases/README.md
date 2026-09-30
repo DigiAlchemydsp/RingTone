@@ -1,4 +1,6 @@
-# Digi FX — Digitone mk1 release
+# RingTone — Digitone mk1 release
+
+**Master ringmod / wavefolding / EQ for the Digitone mk1.**
 
 A set of elekloader mods for the **Digitone mk1 / Digitone Keys, OS 1.43**:
 three master-insert effects, output metering, and a **DIGI FX page on the master
@@ -45,8 +47,8 @@ for the startup menu, press **TRIG 4 (OS UPGRADE)**, then send the stock
 
 - Tested in the **digiemu** emulator (boots, settles, `dsp_running=2`; the page
   draws as the fourth master entry). **Not yet tested on hardware.**
-- **Settings are not saved per pattern yet** — they reset at power-off. Per-pattern
-  persistence (in the kit) is the open item; see `../HANDOFF.md` §6.
+- **Settings are not saved per pattern yet** — they reset at power-off.
+  Per-pattern persistence (in the kit) is the open item.
 - The DIGI FX page is opened by FUNC+LFO; the emulator's key-injection harness
   cannot cycle repeated same-key chords, so the page was verified structurally.
 
@@ -67,7 +69,7 @@ python -m elekloader.patch --stock $stock --mod $core `
   --mod ..\mods\digictl\out\digictl-1.2.elemod --out Digitone_OS1.43-digifx.syx --version 2.0o
 ```
 
-See `../DSP.md` for the DSP reference and `../HANDOFF.md` for the session state.
+See `../DSP.md` for the DSP reference.
 
 Licence: GPL-2.0-or-later. Not affiliated with Elektron. Custom firmware is at
 your own risk.
