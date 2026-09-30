@@ -78,10 +78,13 @@ python -m elekloader.patch --stock $stock --mod $core `
 
 ## Status
 
-Tested in the **digiemu** emulator (boots, settles, `dsp_running=2`; the page
-draws as the fourth master entry). **Not yet tested on hardware.** Settings are
-**not saved per pattern yet** (they reset at power-off); per-pattern persistence
-is the open item.
+**Work in progress.** Tested in the **digiemu** emulator (boots, settles,
+`dsp_running=2`; the page draws as the fourth master entry). **Not yet tested on
+hardware.** Upcoming fixes:
+
+- **encoder acceleration** for the parameters;
+- **saving the state on the pattern level** (the settings currently reset at
+  power-off).
 
 ## Licence
 
