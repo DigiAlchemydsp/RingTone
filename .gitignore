@@ -1,0 +1,18 @@
+# Firmware — never commit, and nothing derived from a stock OS.
+*.syx
+*.bin
+*.snap
+*.syx.json
+*.syx.map.json
+
+# Build intermediates and outputs (the .elemod in releases/ ARE kept).
+*.work
+*.o
+mods/*/out/
+
+# Local session notes (kept on disk, not in the repo)
+HANDOFF.md
+
+# OS cruft
+Thumbs.db
+desktop.ini

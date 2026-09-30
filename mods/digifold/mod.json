@@ -1,0 +1,18 @@
+{
+ "id": "digifold",
+ "version": "1.0",
+ "title": "Digi Fold",
+ "category": "Sound",
+ "author": "Digital Alchemy DSP",
+ "license": "GPL-2.0-or-later",
+ "description": "A master wavefolder: a triangle fold with an on/off and an amount. Amount 0 is 1.0x (no fold); higher amounts fold the peaks harder and add harmonics. Runs after the ring and the EQ (ring -> EQ -> fold). Combines with every mod.",
+ "device": "digitone-mk1",
+ "os": "1.43",
+ "sources": ["fold.c"],
+ "subscribe": [
+  {"event": "ev_render_in",  "fn": "digifold_render_in",  "order": 50},
+  {"event": "ev_render_out", "fn": "digifold_render_out", "order": 60}
+ ],
+ "requires": ["core"],
+ "resources": {"names": ["ui:master wavefolder"]}
+}

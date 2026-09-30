@@ -1,0 +1,18 @@
+{
+ "id": "digiring",
+ "version": "1.0",
+ "title": "Digi Ring",
+ "category": "Sound",
+ "author": "Digital Alchemy DSP",
+ "license": "GPL-2.0-or-later",
+ "description": "A master ring modulator / tremolo: multiplies the output by a sine carrier. 90 Hz at 40% wet by default (a tremolo); set DIGIRING_FREQ_HZ to a higher rate for a metallic ring. Combines with every mod.",
+ "device": "digitone-mk1",
+ "os": "1.43",
+ "sources": ["ring.c"],
+ "subscribe": [
+  {"event": "ev_render_in",  "fn": "digiring_render_in",  "order": 50},
+  {"event": "ev_render_out", "fn": "digiring_render_out", "order": 50}
+ ],
+ "requires": ["core"],
+ "resources": {"names": ["ui:master ring/AM"]}
+}
