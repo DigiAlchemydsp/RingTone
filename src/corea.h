@@ -46,4 +46,20 @@ static inline int dn_q14d(int x, int d)
     return (x >> 14) * d;
 }
 
+/* Full-precision versions. The truncated ones above drop the low 15/14 bits of
+ * x BEFORE the multiply, which quantizes the output in steps of c (about -36 dB
+ * for a Q15 carrier) -- audible as noise on quiet material. These keep the
+ * dropped bits as a second term, so the product is exact with 32-bit ops:
+ *   (x >> k) * c + (((x & (2^k-1)) * c) >> k)   ==   (x * c) >> k
+ * The first term still keeps x >> k times c inside 32 bits for audio levels. */
+static inline int dn_mul15(int x, int c)
+{
+    return (x >> 15) * c + (((x & 0x7fff) * c) >> 15);
+}
+
+static inline int dn_mul14(int x, int d)
+{
+    return (x >> 14) * d + (((x & 0x3fff) * d) >> 14);
+}
+
 #endif

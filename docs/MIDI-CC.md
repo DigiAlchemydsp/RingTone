@@ -1,0 +1,74 @@
+# DIGI MIDI CC control (Digitone mk1, OS 1.43)
+
+Status: **implemented (digictl 1.7), verified in digiemu (hook path).** The
+DIGI FX / FILTER / FOLD-EQ parameters respond to **incoming MIDI Control
+Change** messages, like the stock internal parameters, so they can be played
+and sequenced from an external controller/DAW.
+
+## How it is hooked
+
+Every incoming CC reaches the stock central CC router at **`0x400ED94E`**
+(`Brain`/MIDI layer; per-track and global). Its first two instructions are
+`lea sp@(-24),sp` / `moveq #8,d0` (6 bytes); `digictl` patches them to
+**`jmp digictl_cc_disp`** (`cc_glue.s`). The glue reads the CC number and value
+from the caller's stack (`sp@(8)`=CC, `sp@(12)`=value), calls
+`digictl_cc_apply()` (in `digictl.c`), then executes the displaced
+instructions and jumps into the stock router at `0x400ED954`. CCs we do not own
+are left to the stock handler untouched.
+
+> **The site must be `op: "jmp"`, not `jsr`.** A `jsr` pushes a return address,
+> so the glue would run with `sp` four bytes lower and read the wrong slots
+> (track/CC instead of CC/value), and the stock frame would be four bytes off —
+> the stock `rts` then lands in garbage (e.g. `P4199E2F4` on CC 8). With `jmp`
+> the glue sees the original entry layout and never returns (`jmp` into stock).
+
+The apply sets the same globals the page does and marks the pattern store dirty,
+so a CC move is saved with the pattern (see `docs/PATTERN-STORAGE.md`).
+
+## CC map
+
+Only CC numbers the **stock DN CC table does not use** are taken (the table
+lives at `0x4018D104`, 182 entries; free CCs are `0,8,11,36,37,40,67,68,69,96,
+97,100,101,103`). Continuous parameters use the undefined CCs; the risky
+`CC11` (Expression) is only a Toggle.
+
+| CC | parameter | notes |
+|---|---|---|
+| `8`   | RING depth | 0..127 (`0` = no ring) |
+| `11`  | RING on/off | >=64 = ON |
+| `36`  | RING rate | 0..127 (maps internally to ~1..1906 Hz) |
+| `37`  | FOLD on/off | >=64 = ON |
+| `40`  | FOLD amount | 0..127 (`0` = bypass) |
+| `67`  | EQ LOW on/off | >=64 = ON |
+| `68`  | EQ HIGH on/off | >=64 = ON |
+| `69`  | EQ LOW gain | 0..127 (64 = flat) |
+| `96`  | EQ HIGH gain | 0..127 (64 = flat) |
+| `97`  | FILTER on/off | >=64 = ON |
+| `100` | FILTER mode | 0..127 -> BP / BP2 / COMB / TRASH (quarters) |
+| `101` | FILTER freq | 0..127 |
+| `103` | FILTER reso | 0..127 |
+
+Not CC-controlled (page only): `digifilter_vmask` (which voices), the meter,
+and the parked `digimod_*` LFO bridge.
+
+Incoming CCs on **any** MIDI channel drive the (global) master FX; the values
+follow the active pattern and are saved with it.
+
+## Verified
+
+`tests/digiemu_midi_cc.py` enters the **real patched site `0x400ED94E`** with a
+crafted caller frame (track=9 makes the stock router return early) and checks
+all 13 CCs plus the dirty flag. Entering the real site (not the glue directly)
+is what catches a `jsr`-vs-`jmp` stack mistake. digiemu has no MIDI input model,
+so **the raw MIDI receive path itself is validated on hardware**, not in the
+emulator.
+
+## Changing the map
+
+The numbers are `#define DN_CC_*` in `mods/digictl/digictl.c`. Keep them to
+free CCs (see above) and update this table and the test `CASES`.
+
+The map is edited **in two places**, because the suite ships as the merged
+`mods/tonefx/` mod: change the `#define`s in `digictl.c`, and keep the
+`0x400ED94E` site as `op: "jmp"` in **both** `mods/digictl/mod.json` and
+`mods/tonefx/mod.json`. Rebuild `tonefx` for the release.

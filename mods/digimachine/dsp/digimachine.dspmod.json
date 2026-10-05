@@ -1,0 +1,24 @@
+{
+ "id": "digimachine-dsp",
+ "version": "0.4",
+ "title": "Digimachine Core B engine",
+ "description": "Wavetable machine engine on the Digitone mk1 second CPU. The render's voice-block jsr jumps to a cave trampoline that jumps to the engine uploaded into shared RAM; the engine renders the machine's 32 stereo frames into shared +0x880 and tail-calls the displaced copy.",
+ "license": "GPL-2.0-or-later",
+ "device": "digitone-mk1",
+ "os": "1.43",
+ "sites": [
+  {
+   "addr": "0x4001f048",
+   "stock": "000000000000",
+   "op": "bytes",
+   "new": "4ef900008000",
+   "kind": "data"
+  },
+  {
+   "addr": "0x40000a0a",
+   "stock": "4eb940003848",
+   "op": "jsr",
+   "target": "0x4001f048"
+  }
+ ]
+}

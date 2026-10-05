@@ -10,8 +10,9 @@
  */
 #include "../../src/corea.h"
 
-/* runtime parameter (exported; digictl toggles it) */
+/* runtime parameters (exported; digictl toggles/reads them) */
 int digimeter_on = 1;
+int digimeter_live = 1;            /* reserved: 1 so the meter always runs */
 int digimeter_l, digimeter_r;      /* 0..60 bars, read by digictl's page */
 
 static volatile unsigned dm_off;

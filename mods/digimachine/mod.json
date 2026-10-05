@@ -1,0 +1,27 @@
+{
+  "id": "digimachine",
+  "version": "0.6",
+ "title": "Digi Machine",
+ "category": "Sound",
+ "author": "Digital Alchemy DSP",
+ "license": "GPL-2.0-or-later",
+  "description": "A wavetable machine for the Digitone mk1 / Keys, OS 1.43, hosted on the synth tracks as extra SYN1 algorithm slots: a detunable wavetable oscillator with width (phase offset) and a morphable (linear-interpolated) oscillator. Selecting one of the added SYN1 algorithm slots (>= 8) starts the wavetable engine; the stock SYN/FILT/AMP pages are the interface. This Core A part uploads the wavetables and the engine image, engages the machine from the selected track's algorithm, pushes the parameters each block and injects the machine audio into the voice-mix source bus so the main FX process it. Stage 1: the FM voice for the slot is not skipped yet and per-note pitch is the SYN-page tune.",
+ "device": "digitone-mk1",
+ "os": "1.43",
+ "sources": ["machine.c"],
+"sites": [
+   {"addr": "0x400971e6", "stock": "4eb94009a16a", "op": "jsr", "target": "dmachine_bus_tap"},
+   {"addr": "0x4018ea26", "stock": "0700", "op": "bytes", "new": "0f00", "kind": "data"},
+   {"addr": "0x40025e44", "stock": "7407", "op": "bytes", "new": "740f", "kind": "code"},
+   {"addr": "0x40025e4a", "stock": "7207", "op": "bytes", "new": "720f", "kind": "code"},
+   {"addr": "0x4002326e", "stock": "7007", "op": "bytes", "new": "7000", "kind": "code"},
+   {"addr": "0x400acf94", "stock": "7007", "op": "bytes", "new": "7000", "kind": "code"}
+  ],
+  "subscribe": [
+  {"event": "ev_tick",      "fn": "dmachine_tick",       "order": 70},
+  {"event": "ev_render_in",  "fn": "dmachine_render_in",  "order": 70},
+  {"event": "ev_render_out", "fn": "dmachine_render_out", "order": 70}
+  ],
+ "requires": ["core"],
+ "resources": {"names": ["machine:wavetable"]}
+}

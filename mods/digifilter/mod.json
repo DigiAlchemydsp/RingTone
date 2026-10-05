@@ -1,0 +1,17 @@
+{
+ "id": "digifilter",
+ "version": "1.1",
+ "title": "Digi Filter",
+ "category": "Sound",
+ "author": "Digital Alchemy DSP",
+ "license": "GPL-2.0-or-later",
+ "description": "Per-voice filter modes on the Digitone mk1 / Keys main CPU's voice stage: BP (band pass), BP2 (a wider band pass), COMB and TRASH (two feedback combs), applied to the selected FM voices before the mix. Hooks the render just before the voice mix (0x4009e13e) and filters the chosen voices in place; the stock voices, effects and outputs are untouched. The combs are smoothed and fractional (delay/feedback glide per sample, interpolated delay tap) and expose four knobs on the DIGI FILTER page: delay offset, harmonics, damping and feedback trim. Routing is per voice (the eight voices are shared across the four tracks). The DIGI FILTER master page (via digictl) sets on/off, mode, freq, reso, the four comb knobs and which voices are filtered.",
+ "device": "digitone-mk1",
+ "os": "1.43",
+ "sources": ["filter.c", "filter_dsp.s", "filter_glue.s"],
+ "sites": [
+  {"addr": "0x4009e13e", "stock": "068080001a00", "op": "jsr", "target": "digifilter_disp"}
+ ],
+ "requires": ["core"],
+ "resources": {"names": ["ui:master page DIGI FILTER", "sound:filter (Digi Filter per-voice modes)"]}
+}

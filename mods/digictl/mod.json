@@ -1,21 +1,24 @@
 {
  "id": "digictl",
- "version": "1.2",
+ "version": "1.8",
  "title": "Digi FX Control",
  "category": "Utilities",
  "author": "Digital Alchemy DSP",
  "license": "GPL-2.0-or-later",
- "description": "The DIGI FX page on the master page tree (FUNC+LFO), as the fourth entry: enable and tune EQ (on, low, high), RING (on, depth, frequency), FOLD (on, amount) and the level meter. Encoders A-H edit one parameter each (OS-style step acceleration); the L/R meter is drawn here. It drives digieq / digiring / digifold / digimeter (all required).",
+ "description": "The DIGI FX and DIGI FILTER pages on the master page tree (FUNC+LFO), as the fourth and fifth entries. DIGI FX: enable and tune EQ (on, low, high), RING (on, depth, frequency), FOLD (on, amount) and the level meter. DIGI FILTER: on/off, mode (BP/BP2/COMB/TRASH), freq, reso, the four COMB/TRASH knobs (delay, harmonics, damping, feedback) and which of the eight voices are filtered (trig keys 1-8 toggle them). Encoders A-H edit one parameter each (OS-style step acceleration). Settings are stored per pattern inside the saved pattern data (they follow pattern switch / reload and a project save, like stock parameters). It drives digieq / digiring / digifold / digimeter / digifilter (all required).",
  "device": "digitone-mk1",
  "os": "1.43",
- "sources": ["digictl.c"],
+ "sources": ["digictl.c", "cc_glue.s"],
  "sites": [
-  {"addr": "0x40199bbc", "stock": "4004ddae", "op": "ptr", "target": "digictl_mdraw"}
+  {"addr": "0x40199bbc", "stock": "4004ddae", "op": "ptr", "target": "digictl_mdraw"},
+  {"addr": "0x400ED94E", "stock": "4fefffe87008", "op": "jmp", "target": "digictl_cc_disp"}
  ],
  "subscribe": [
-  {"event": "ev_tick", "fn": "digictl_tick", "order": 40},
-  {"event": "ev_enc",  "fn": "digictl_enc",  "order": 40}
+  {"event": "ev_tick",      "fn": "digictl_tick",  "order": 40},
+  {"event": "ev_enc",       "fn": "digictl_enc",   "order": 40},
+  {"event": "ev_key",       "fn": "digictl_key",   "order": 40},
+  {"event": "ev_render_in", "fn": "digictl_mod_in","order": 40}
  ],
- "requires": ["core", "digieq", "digiring", "digifold", "digimeter"],
+ "requires": ["core", "digieq", "digiring", "digifold", "digimeter", "digifilter"],
  "resources": {"names": ["ui:master page DIGI FX"]}
 }

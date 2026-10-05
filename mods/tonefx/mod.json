@@ -1,0 +1,54 @@
+{
+ "id": "tonefx",
+ "version": "2.4a",
+ "title": "Tone+FX",
+ "category": "Sound",
+ "author": "Digital Alchemy DSP",
+ "license": "GPL-2.0-or-later",
+ "description": "The Tone+FX suite as one elemod: master ring modulator (digiring), tone-tilt EQ (digieq), wavefolder (digifold), per-voice multimode filter (digifilter), output meter (digimeter) and the DIGI FX / DIGI FILTER / DIGI FOLD-EQ master pages with all their controls (digictl). The per-voice filter's COMB/TRASH modes use smoothed fractional combs with four knobs (delay, harmonics, damping, feedback) on the one DIGI FILTER page. Settings are stored per pattern and the FX respond to incoming MIDI CC. It REQUIRES the core (core-dn1) and does not include it, so it combines with any other elekloader mods.",
+ "device": "digitone-mk1",
+ "os": "1.43",
+ "sources": [
+  "../digimeter/meter.c",
+  "../digieq/eq.c",
+  "../digiring/ring.c",
+  "../digifold/fold.c",
+  "../digifilter/filter.c",
+  "../digifilter/filter_dsp.s",
+  "../digifilter/filter_glue.s",
+  "../digictl/digictl.c",
+  "../digictl/cc_glue.s"
+ ],
+ "sites": [
+  {"addr": "0x4009e13e", "stock": "068080001a00", "op": "jsr", "target": "digifilter_disp"},
+  {"addr": "0x40199bbc", "stock": "4004ddae", "op": "ptr", "target": "digictl_mdraw"},
+  {"addr": "0x400ED94E", "stock": "4fefffe87008", "op": "jmp", "target": "digictl_cc_disp"}
+ ],
+ "subscribe": [
+  {"event": "ev_render_in",  "fn": "digictl_mod_in",        "order": 40},
+  {"event": "ev_render_in",  "fn": "digiring_render_in",    "order": 50},
+  {"event": "ev_render_in",  "fn": "digieq_render_in",      "order": 50},
+  {"event": "ev_render_in",  "fn": "digifold_render_in",    "order": 50},
+  {"event": "ev_render_in",  "fn": "digimeter_render_in",   "order": 50},
+  {"event": "ev_render_out", "fn": "digiring_render_out",   "order": 50},
+  {"event": "ev_render_out", "fn": "digieq_render_out",     "order": 55},
+  {"event": "ev_render_out", "fn": "digifold_render_out",   "order": 60},
+  {"event": "ev_render_out", "fn": "digimeter_render_out",  "order": 65},
+  {"event": "ev_tick",       "fn": "digictl_tick",          "order": 40},
+  {"event": "ev_tick",       "fn": "digimeter_tick",        "order": 60},
+  {"event": "ev_enc",        "fn": "digictl_enc",           "order": 40},
+  {"event": "ev_key",        "fn": "digictl_key",           "order": 40}
+ ],
+ "requires": ["core"],
+ "resources": {
+  "names": [
+   "ui:master page DIGI FX",
+   "ui:master page DIGI FILTER",
+   "ui:master FOLD / EQ",
+   "ui:master ring/AM",
+   "ui:master EQ",
+   "ui:master wavefolder",
+   "sound:filter (Digi Filter per-voice modes)"
+  ]
+ }
+}

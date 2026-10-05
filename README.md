@@ -32,7 +32,7 @@ is a **per-voice** stage instead, running before the eight FM voices are mixed:
 | `digiring` | **ring** | a sine carrier multiplies the mix — a tremolo at a low rate, a ring at an audio rate |
 | `digieq` | **EQ** | a one-pole split with low/high gains (a tone tilt) |
 | `digifold` | **fold** | a triangle wavefolder, on/off + amount |
-| `digifilter` | **filter** | BP / BP2 / COMB / TRASH on the selected FM voices, before the mix |
+| `digifilter` | **filter** | BP / BP2 / COMB / TRASH on the selected FM voices, before the mix; the combs add delay / harmonics / damping / feedback |
 | `digimeter` | **meter** | L/R peak bars, drawn on the DIGI FX page |
 | `digictl` | **pages** | the DIGI FX and DIGI FILTER master pages (FUNC+LFO) that edit the four + the meter |
 
@@ -42,18 +42,22 @@ is a **per-voice** stage instead, running before the eight FM voices are mixed:
 `digifilter` hooks the render just before the voice mix (`0x4009e13e`) and
 filters the chosen voices in `0x80004110` in place. The Digitone's eight voices
 are **shared between the four tracks**, so routing is per voice: the DIGI FILTER
-page shows eight voice toggles (trig keys 1-8) plus on/off, mode, frequency and
-resonance. The voice toggles use the voice menu's voice indicator — an outlined
-5x5 box, filled when the voice is routed — so they look native. See
-[`docs/img/digifilter-page.png`](docs/img/digifilter-page.png).
+page shows eight voice toggles (trig keys 1-8) plus on/off, mode, frequency,
+resonance and the four COMB/TRASH knobs. The voice toggles use the voice menu's
+voice indicator — an outlined 5x5 box, filled when the voice is routed — so they
+look native. See [`docs/img/digifilter-page.png`](docs/img/digifilter-page.png).
 
 It is built for the main CPU's budget: the cutoff and resonance are global, so
-the SVF coefficients are computed **once per block** (not once per voice), the
-tables are interpolated at fractional (Q8) cutoff/resonance and glide over ~5 ms
-(no steps), a voice that is silent and settled is **skipped entirely**, and
-routing is **capped at 4 voices**, so the per-block cost is bounded. The comb is
-an integer-delay feedback comb (one multiply a sample; delay and feedback glide
-once a block).
+the SVF coefficients are computed **once per block** (not once per voice) and
+**cached while the smoothed indices hold steady**, the tables are interpolated
+at fractional (Q8) cutoff/resonance and glide over ~5 ms (no steps), a voice
+that is silent and settled is **skipped entirely** (before any coefficient
+build), and routing is **capped at 4 voices**, so the per-block cost is bounded.
+The combs are the Digitakt Digi Filter's **smoothed, fractional-delay** combs:
+the delay and feedback glide per sample and the delay tap is interpolated (and
+skips the multiply once the delay is integral), with four knobs — **DLY** delay
+offset, **HARM** harmonics divider, **DMP** damping and **FB** feedback trim —
+all on the one DIGI FILTER page.
 
 > Unofficial and unsupported. Not affiliated with, endorsed by or supported by
 > Elektron. Flashing modified firmware is at your own risk. Read
@@ -77,17 +81,20 @@ everywhere; no stock key or encoder is taken.
   amount, **E** EQ HIGH on/off, **F** EQ HIGH amount (faders).
   See [`docs/img/fold-eq-page.png`](docs/img/fold-eq-page.png).
 - **DIGI FILTER**: **A** on/off, **B** mode (BP/BP2/COMB/TRASH), **C** frequency,
-  **D** resonance, **E/F** all voices on/off, and **trig keys 1–8** toggle which
-  voices are filtered. At most **4 voices** are filtered at once (the page says
-  "max 4"), bounding the per-voice load; the comb is a simple integer-delay
-  feedback comb.
+  **D** resonance, **E** delay, **F** harmonics, **G** damping, **H** feedback;
+  **trig keys 1–8** toggle which voices are filtered. All eight parameters fit on
+  the one page (there is no per-track envelope here — the Digitone filter is
+  global per voice). At most **4 voices** are filtered at once (the page says
+  "max 4"), bounding the per-voice load; the combs are smoothed and fractional.
 
 **LEFT / RIGHT rotate the three pages** (DIGI FX → DIGI FILTER → DIGI FOLD/EQ).
 No stock key or encoder is taken; PAGE keeps its stock meaning.
 
-Every encoder/slider moves **1/127 of its range per step** (the stock
-convention), so all parameters have the same speed for the same knob motion;
-RESO is a 0–127 parameter too.
+Every parameter is **0–127** and moves **one step per notch**, the stock
+convention (so EQ LOW/HIGH show 0–127 with 64 = flat; RESO is 0–127 too). The
+FX also respond to **incoming MIDI CC** (a set of CC numbers the stock DN does
+not use), so they can be played/sequenced from an external controller; see
+[`docs/MIDI-CC.md`](docs/MIDI-CC.md).
 
 The master effects (EQ, ring, fold) are on by default; `digifilter` is off
 until you enable it.
@@ -97,7 +104,9 @@ until you enable it.
 ```
 src/            corea.h, sin256.h  (shared helpers)
 mods/<id>/      mod.json + sources + out/<id>-<ver>.elemod
+mods/tonefx/    the merged suite mod (format 2; requires the core, no core inside)
 releases/       the packaged .elemods + a README (no firmware)
+docs/           findings (pattern storage, MIDI CC, parked DSP plans)
 DSP.md          DSP reference (addresses, the two CPUs, the FM engine, ...)
 LICENSE         GPL-2.0
 ```
@@ -116,50 +125,52 @@ See [`releases/README.md`](releases/README.md) for install and recovery.
 
 ## Building from source
 
+The suite ships as one merged mod, `mods/tonefx/` (it requires the core, which
+it does not include). Build it, then patch the core + `tonefx`:
+
 ```powershell
 $env:PATH = "C:\SysGCC\m68k-elf\bin;" + $env:PATH
 $env:ELEKLOADER_CROSS = "m68k-elf-"
 $env:PYTHONPATH = "<elekloader checkout>"
 $stock = "<your> Digitone_and_Digitone_Keys_OS1.43.syx"
-$core  = "core-dn1-2.0a.elemod"
-foreach ($m in 'digimeter','digieq','digiring','digifold','digifilter','digictl') {
-  python -m elekloader.sdk.build "mods\$m" --stock $stock
-}
+$core  = "<elekloader>\mods\core-dn1\out\core-2.0a.elemod"
+python -m elekloader.sdk.build "mods\tonefx" --stock $stock
 python -m elekloader.patch --stock $stock --mod $core `
-  --mod mods\digimeter\out\digimeter-1.1.elemod --mod mods\digieq\out\digieq-1.0.elemod `
-  --mod mods\digiring\out\digiring-1.0.elemod --mod mods\digifold\out\digifold-1.0.elemod `
-  --mod mods\digifilter\out\digifilter-1.0.elemod --mod mods\digictl\out\digictl-1.3.elemod `
-  --out custom.syx --version 2.0q
+  --mod mods\tonefx\out\tonefx-2.4a.elemod --out custom.syx --version 2.4a
 ```
+
+The components (`digimeter`, `digieq`, `digiring`, `digifold`, `digifilter`,
+`digictl`) can still be built and combined individually.
 
 ## Status
 
-**Work in progress.** The FX suite is **tested on hardware** (a Digitone mk1);
-all six mods are tested in the **digiemu** emulator (boot/settle,
-`dsp_running=2`; both master pages draw as the fourth and fifth entries;
-`digifilter`'s render hook runs live with 0 faults). `digifilter` has **not**
-yet been listened to on hardware. Upcoming fixes:
+**Work in progress.** The suite is stress-tested on real hardware (a Digitone
+mk1) and in the **digiemu** emulator (boot/settle, `dsp_running=2`; the master
+pages draw; per-pattern persistence and the MIDI-CC hook are tested). Done
+across sessions: pattern-level save/reload, stock 0–127 controls, MIDI CC, one
+merged `tonefx` mod, and a reworked per-voice filter (smoothed fractional combs
++ four comb knobs on the one page, cached coefficients). Remaining:
 
-- **encoder acceleration** for the parameters;
-- **saving the state on the pattern level** (the settings currently reset at
-  power-off);
-- `digifilter`: per-track routing (the voices are shared, so v1 is per-voice),
-  and a hardware audio pass.
+- a **hardware audio pass** of the FX themselves (the reworked combs included);
+- **slider feel / encoder acceleration** closer to stock, and small UI polish;
+- `digifilter`: per-track routing (the voices are shared, so v1 is per-voice).
 
-## Testing `digifilter`
+## Testing
 
 ```powershell
-# DSP model self-test (no toolchain)
-python tests/filter_model.py
-
-# emulator UI test: the DIGI FILTER page is present and selectable, screenshots
-# (patched-Unicorn venv; --fw is a firmware the app built from core-dn1 + mods)
-python tests/digiemu_digifilter.py --fw <the firmware the app built>
+python tests/filter_model.py                                        # DSP model (no toolchain)
+python tests/digiemu_digifilter.py  --fw <dn1-...>                  # FILTER page + render hook
+python tests/digiemu_fx_screenshots.py --fw <dn1-...>               # RING/COMB/FOLD screenshots
+python tests/digiemu_pattern_store.py --fw <dn1-...>                # per-pattern settings
+python tests/digiemu_midi_cc.py --fw <dn1-...> --map <syx.map.json> # MIDI CC hook
 ```
 
-The DSP kernel is the Digitakt Digi Filter's, retuned for the Digitone's Q1.31
-voice block; the render hook was exercised live in digiemu (16002 block calls,
-audio engine live at 48 kHz, 0 faults).
+(The `digiemu_*` tests need the patched-Unicorn venv; `--fw` is a firmware the
+app built from `core-dn1` + the mods.)
+
+The `digifilter` DSP kernel is the Digitakt Digi Filter's, retuned for the
+Digitone's Q1.31 voice block; the render hook was exercised live in digiemu
+(16002 block calls, audio engine live at 48 kHz, 0 faults).
 
 ## Licence
 

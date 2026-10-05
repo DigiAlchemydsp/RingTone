@@ -13,6 +13,10 @@ mods/*/out/
 # Local session notes (kept on disk, not in the repo)
 HANDOFF.md
 
+# Python bytecode
+__pycache__/
+*.pyc
+
 # OS cruft
 Thumbs.db
 desktop.ini

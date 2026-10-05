@@ -16,9 +16,10 @@
 #define DF_T    (1u << 22)          /* fold threshold */
 #define DF_2T   (1u << 23)
 
-/* runtime parameters (exported; digictl edits them) */
+/* runtime parameters (exported; digictl edits them).
+ * Stock convention: 0..127, one step per notch. gain = (256 + amount*8)/256. */
 int digifold_on = 1;
-int digifold_amount = 0;            /* 0..1024; gain = (256 + amount)/256 */
+int digifold_amount = 0;            /* 0..127 */
 
 static volatile unsigned df_off;
 
@@ -31,7 +32,9 @@ static inline int df_fold(int x, unsigned gain)
 {
     int s = x < 0 ? -1 : 1;
     unsigned a = x < 0 ? (unsigned)(-x) : (unsigned)x;
-    a = (a >> 8) * gain;                /* apply the gain (Q8), in 32 bits */
+    /* full-precision Q8 gain: the truncated form zeroed the low 8 bits even at
+     * amount 0, which was noise; amount 0 is now bypassed entirely below. */
+    a = (a >> 8) * gain + (((a & 0xffu) * gain) >> 8);
     a &= (DF_2T - 1u);                  /* |x| mod 2T */
     if (a > DF_T)
         a = DF_2T - a;                  /* reflect into [0, T] */
@@ -43,9 +46,9 @@ void digifold_render_out(void)
     int *p;
     unsigned gain;
     int i;
-    if (!digifold_on)
-        return;
-    gain = (unsigned)(256 + digifold_amount);
+    if (!digifold_on || digifold_amount == 0)
+        return;                         /* amount 0 is exact bypass */
+    gain = (unsigned)(256 + digifold_amount * 8);   /* 0..127 -> 256..1272 */
     p = (int *)(DN_OUT_BASE + df_off);
     for (i = 0; i < DN_OUT_FRAMES; i++) {
         p[0] = df_fold(p[0], gain);
