@@ -1,11 +1,11 @@
 {
  "id": "digictl",
- "version": "1.8",
+ "version": "1.9",
  "title": "Digi FX Control",
  "category": "Utilities",
  "author": "Digital Alchemy DSP",
  "license": "GPL-2.0-or-later",
- "description": "The DIGI FX and DIGI FILTER pages on the master page tree (FUNC+LFO), as the fourth and fifth entries. DIGI FX: enable and tune EQ (on, low, high), RING (on, depth, frequency), FOLD (on, amount) and the level meter. DIGI FILTER: on/off, mode (BP/BP2/COMB/TRASH), freq, reso and which of the eight voices are filtered (E/F all voices on/off, trig keys 1-8 toggle one voice each). Encoders A-H edit one parameter each, at the stock one-step-per-detent rate with acceleration (OS-style accumulation). Settings are stored per pattern inside the saved pattern data (they follow pattern switch / reload and a project save, like stock parameters). It drives digieq / digiring / digifold / digimeter / digifilter (all required).",
+ "description": "The DIGI FX and DIGI FOLD/EQ pages on the master page tree (FUNC+LFO), as the fourth and fifth entries. DIGI FX: RING (on, depth, frequency) and the level meter. DIGI FOLD/EQ: FOLD (on, amount) and EQ LOW / HIGH (each on/off + amount). Encoders A-H edit one parameter each, at the stock one-step-per-detent rate with acceleration (OS-style accumulation). Settings are stored per pattern inside the saved pattern data (they follow pattern switch / reload and a project save, like stock parameters). It drives digieq / digiring / digifold / digimeter (all required).",
  "device": "digitone-mk1",
  "os": "1.43",
  "sources": ["digictl.c", "cc_glue.s"],
@@ -19,6 +19,6 @@
   {"event": "ev_key",       "fn": "digictl_key",   "order": 40},
   {"event": "ev_render_in", "fn": "digictl_mod_in","order": 40}
  ],
- "requires": ["core", "digieq", "digiring", "digifold", "digimeter", "digifilter"],
+ "requires": ["core", "digieq", "digiring", "digifold", "digimeter"],
  "resources": {"names": ["ui:master page DIGI FX"]}
 }

@@ -1,12 +1,11 @@
 # tonefx — the Tone+FX suite as one elemod
 
-This mod is a **merge** of the six suite mods:
+This mod is a **merge** of the five suite mods:
 
 - `../digimeter/meter.c`
 - `../digieq/eq.c`
 - `../digiring/ring.c`
 - `../digifold/fold.c`
-- `../digifilter/` (`filter.c`, `filter_dsp.s`, `filter_glue.s`)
 - `../digictl/` (`digictl.c`, `cc_glue.s`)
 
 `mod.json` pulls in all their sources, sites and subscriptions and declares
@@ -16,10 +15,10 @@ it combines with `core-dn1-2.0a.elemod` and any other elekloader mods.
 ```powershell
 python -m elekloader.sdk.build . --stock Digitone_and_Digitone_Keys_OS1.43.syx
 python -m elekloader.patch --stock <stock> --mod <core-dn1-2.0a.elemod> `
-  --mod out/tonefx-2.3b.elemod --out ToneFX.syx --version 2.3b
+  --mod out/tonefx-2.3c.elemod --out ToneFX.syx --version 2.3c
 ```
 
-The six component mods stay the source of truth; if their code changes, rebuild
+The five component mods stay the source of truth; if their code changes, rebuild
 `tonefx` too (and keep the CC-router site `op: "jmp"` in sync with
 `../digictl/mod.json`). Do **not** use `elekloader.mkmod` for the release: that
 produces a format-1 whole build (with the core), which cannot be combined with

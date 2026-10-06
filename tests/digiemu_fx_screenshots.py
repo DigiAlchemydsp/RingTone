@@ -2,12 +2,11 @@
 """Tone+FX screenshot capture in digiemu.
 
 Renames the current pattern to TONE+FX (every pattern slot's name field, so
-whatever slot is current displays it), then captures the three FX pages on
+whatever slot is current displays it), then captures the two FX pages on
 the master page tree:
     RING.png  -> DIGI FX (kind 0)
-    COMB.png  -> DIGI FILTER (kind 1), mode stepped BP -> BP2 -> COMB
-    FOLD.png  -> DIGI FOLD / EQ (kind 2)
-Run against dn1-2.3b. Needs the patched-Unicorn python (the digiemu venv).
+    FOLD.png  -> DIGI FOLD / EQ (kind 1)
+Run against dn1-2.3c. Needs the patched-Unicorn python (the digiemu venv).
 """
 import argparse
 import os
@@ -134,7 +133,7 @@ def main():
         kinds = [struct.unpack('>I', m.peek(vec + 4 * i, 4))[0]
                  for i in range(min(nk, 16))]
         print("view %s kinds=%s" % (hex(view), kinds))
-        for want in (0, 1, 2):
+        for want in (0, 1):
             assert want in kinds, "kind %d missing" % want
 
         # DIGI FX (kind 0)
@@ -142,33 +141,15 @@ def main():
         pc = spin(pc, a.step)
         shot("RING.png")
 
-        # RIGHT -> DIGI FILTER (kind 1)
+        # RIGHT -> DIGI FOLD / EQ (kind 1)
         pc = btn(18, True); pc = spin(pc, 4_000_000)
         pc = btn(18, False); pc = spin(pc, a.step)
         idx = struct.unpack('>I', m.peek(view + 144, 4))[0]
-        assert idx == kinds.index(1), "RIGHT did not reach DIGI FILTER (idx=%d)" % idx
-
-        # mode: encoder B, two steps BP -> BP2 -> COMB (1 step = 4 counts)
-        f0 = cap.frames[-1]
-        pc = panelin.feed(m, prof, panelin.encode_encoder(1, 4))
-        pc = spin(pc, a.step)
-        f1 = cap.frames[-1]
-        pc = panelin.feed(m, prof, panelin.encode_encoder(1, 4))
-        pc = spin(pc, a.step)
-        f2 = cap.frames[-1]
-        print("filter page changed per mode step:",
-              f1 != f0, f2 != f1)
-        shot("COMB.png")
-
-        # RIGHT -> DIGI FOLD / EQ (kind 2)
-        pc = btn(18, True); pc = spin(pc, 4_000_000)
-        pc = btn(18, False); pc = spin(pc, a.step)
-        idx = struct.unpack('>I', m.peek(view + 144, 4))[0]
-        assert idx == kinds.index(2), "RIGHT did not reach DIGI FOLD/EQ (idx=%d)" % idx
+        assert idx == kinds.index(1), "RIGHT did not reach DIGI FOLD/EQ (idx=%d)" % idx
         shot("FOLD.png")
         break
 
-    print("PASS: RING.png / COMB.png / FOLD.png written to", a.out)
+    print("PASS: RING.png / FOLD.png written to", a.out)
 
 
 if __name__ == "__main__":

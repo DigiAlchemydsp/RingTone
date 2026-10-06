@@ -2,20 +2,19 @@
  * digictl: the master-page UI for the DIGI suite.
  * Digitone mk1 / Keys, OS 1.43.
  *
- * Three pages of our own, appended to the master page tree (view kinds 0, 1,
- * 2), rotated with LEFT / RIGHT while one of them is shown:
+ * Two pages of our own, appended to the master page tree (view kinds 0, 1),
+ * rotated with LEFT / RIGHT while one of them is shown:
  *
  *   DIGI FX      kind 0  RING only: on/off, depth, frequency, meter; a low-CPU
  *                        ring animation and depth/frequency bars on the right
- *   DIGI FILTER  kind 1  the per-voice filter (digifilter's own draw)
- *   DIGI FOLD/EQ kind 2  FOLD amount (+ spiral), EQ LOW / HIGH faders, each
+ *   DIGI FOLD/EQ kind 1  FOLD amount (+ spiral), EQ LOW / HIGH faders, each
  *                        with its own on/off encoder
  *
  * None of the stock pages are touched and no stock key or encoder is taken:
  * the pages are only reached by FUNC+LFO (the cycle) or LEFT/RIGHT.
  *
  * The master view (vtable 0x40199BAC) keeps its page kinds in a vector at
- * view+124 (end +128, current index +144). We append kinds 0, 1 and 2 and
+ * view+124 (end +128, current index +144). We append kinds 0 and 1 and
  * patch the view's draw (slot 4, 0x40199BBC).
  */
 #include "../../src/corea.h"
@@ -27,32 +26,25 @@
 #define DN_OP_NEW     ((int *(*)(unsigned))0x400E944C)
 #define DN_STOCK_DRAW ((void (*)(void *, void *))0x4004DDAE)
 #define DN_FXKIND     0
-#define DN_FILTERKIND 1
-#define DN_FEKIND     2
-#define DN_NPAGES     3
+#define DN_FEKIND     1
+#define DN_NPAGES     2
 #define DC_PER_STEP   4
 
 extern int digieq_low_on, digieq_high_on, digieq_low_d, digieq_high_d;
 extern int digiring_on, digiring_depth, digiring_freq;
 extern int digifold_on, digifold_amount;
-extern int digifilter_on, digifilter_mode, digifilter_freq, digifilter_reso,
-           digifilter_vmask;
 extern int digimeter_on, digimeter_l, digimeter_r;
 
 /* Track-LFO bridge. A track LFO can target the track's FLTR FREQ; that live
  * value is in the per-voice record at 0x80003544 + (voice-1)*0x9E, FREQ at +0
  * (index<<8, fractional low byte). We read it every block and drive one of our
- * params from it, so a track LFO modulates us. Set the track filter to OFF if
- * the stock filter sweep is not wanted (FREQ still updates). */
+ * params from it, so a track LFO modulates us. */
 int digimod_dest;                    /* 0 off, 1 ring dep, 2 ring frq, 3 fold,
-                                        4 EQ low, 5 EQ high, 6 filter freq.
+                                        4 EQ low, 5 EQ high.
                                         Parked: no page readout; the DEST/VOICE
                                         encoders still drive it for testing. */
 int digimod_voice = 1;               /* 1..8 */
 #define DN_FREQ_REC(v) (*(volatile unsigned short *)(0x80003544u + ((v) - 1) * 0x9E))
-extern void digifilter_page_draw(void *bmp);
-extern int digifilter_page_enc(int id, int d);
-extern int digifilter_page_key(int id, int flags);
 
 /* ---- per-pattern storage -----------------------------------------------------
  * Our FX params have no stock field, so they are kept inside the saved pattern.
@@ -68,18 +60,16 @@ extern int digifilter_page_key(int id, int flags);
 #define DN_PAT_STRIDE 0x1611Du
 #define DN_PAT_SLOTS  128u
 #define DN_STORE_OFF  0x1040u
-#define DN_STORE_N    17
-#define DN_STORE_VER  2
+#define DN_STORE_N    12
+#define DN_STORE_VER  3
 #define DN_STORE_MAG(a) ((a)[0] == 0x44 && (a)[1] == 0x47 && \
                          (a)[2] == 0x58 && (a)[3] == 0x31 && \
-                         (a)[5] == DN_STORE_VER)               /* "DGX1" v2 */
+                         (a)[5] == DN_STORE_VER)               /* "DGX1" v3 */
 
 static int *const dn_fxparam[DN_STORE_N] = {
     &digiring_on, &digiring_depth, &digiring_freq,
     &digieq_low_on, &digieq_high_on, &digieq_low_d, &digieq_high_d,
     &digifold_on, &digifold_amount,
-    &digifilter_on, &digifilter_mode, &digifilter_freq, &digifilter_reso,
-    &digifilter_vmask,
     &digimeter_on, &digimod_dest, &digimod_voice,
 };
 
@@ -152,7 +142,7 @@ static int clampi(int v, int lo, int hi);
  * cc_glue.s hooks the incoming CC router (0x400ED94E) and calls this with the
  * CC number and value. Only CC numbers the stock DN table does not use are
  * ours; every other CC falls through to stock untouched. Values are 0..127;
- * on/off params switch at 64; MODE maps the full range onto BP..TRASH. */
+ * on/off params switch at 64. */
 #define DN_CC_RING_ON    11
 #define DN_CC_RING_DEPTH 8
 #define DN_CC_RING_RATE  36
@@ -162,10 +152,6 @@ static int clampi(int v, int lo, int hi);
 #define DN_CC_EQ_HI_ON   68
 #define DN_CC_EQ_LO      69
 #define DN_CC_EQ_HI      96
-#define DN_CC_FILT_ON    97
-#define DN_CC_FILT_MODE  100
-#define DN_CC_FILT_FREQ  101
-#define DN_CC_FILT_RESO  103
 
 void digictl_cc_apply(int cc, int value)
 {
@@ -180,16 +166,12 @@ void digictl_cc_apply(int cc, int value)
     case DN_CC_EQ_HI_ON:   digieq_high_on = (v >= 64); break;
     case DN_CC_EQ_LO:      digieq_low_d = v; break;
     case DN_CC_EQ_HI:      digieq_high_d = v; break;
-    case DN_CC_FILT_ON:    digifilter_on = (v >= 64); break;
-    case DN_CC_FILT_MODE:  digifilter_mode = (v * 4) / 128; break;
-    case DN_CC_FILT_FREQ:  digifilter_freq = v; break;
-    case DN_CC_FILT_RESO:  digifilter_reso = v; break;
     default: return;                 /* not ours: stock handles/ignores it */
     }
     dn_store_dirty = 1;              /* persist with the pattern */
 }
 
-static const int dc_kinds[DN_NPAGES] = { DN_FXKIND, DN_FILTERKIND, DN_FEKIND };
+static const int dc_kinds[DN_NPAGES] = { DN_FXKIND, DN_FEKIND };
 
 #define DN_MASTER_VT  0x40199BAC
 static char *dc_view;               /* the master view, from its last draw */
@@ -218,7 +200,6 @@ void digictl_mod_in(void)
     case 3: digifold_amount = idx; break;
     case 4: digieq_low_d = idx; break;
     case 5: digieq_high_d = idx; break;
-    case 6: digifilter_freq = idx; break;
     default: break;
     }
 }
@@ -248,21 +229,19 @@ static void add_page(char *view)
     for (i = 0; i < n; i++)
         if (v[i] >= DN_FXKIND && v[i] <= DN_FEKIND)
             return;
-    pos = n >= 4 ? 3 : n;                   /* the fourth, fifth and sixth */
+    pos = n >= 4 ? 3 : n;                   /* the fourth and fifth */
     nv = DN_OP_NEW(4u * (unsigned)(n + DN_NPAGES));
     if (!nv)
         return;
     for (i = j = 0; i < n; i++) {
         if (i == pos) {
             nv[j++] = DN_FXKIND;
-            nv[j++] = DN_FILTERKIND;
             nv[j++] = DN_FEKIND;
         }
         nv[j++] = v[i];
     }
     if (pos == n) {
         nv[j++] = DN_FXKIND;
-        nv[j++] = DN_FILTERKIND;
         nv[j++] = DN_FEKIND;
     }
     *(int **)(view + 124) = nv;
@@ -384,8 +363,6 @@ void digictl_mdraw(void *view, void *bmp)
     k = cur_kind(dc_view);
     if (k == DN_FXKIND)
         dg_fx_page(bmp);
-    else if (k == DN_FILTERKIND)
-        digifilter_page_draw(bmp);
     else if (k == DN_FEKIND)
         dg_fe_page(bmp);
 }
@@ -400,7 +377,7 @@ void digictl_tick(void *ctrl)
         dc_vis--;
     if (dc_vis > 0 && dc_view) {
         k = cur_kind(dc_view);
-        if (k == DN_FXKIND || k == DN_FILTERKIND || k == DN_FEKIND)
+        if (k == DN_FXKIND || k == DN_FEKIND)
             DN_INVALIDATE(dc_view);
     }
 }
@@ -433,17 +410,6 @@ int digictl_enc(void *brain, void *ev)
         return 0;
     k = cur_kind(dc_view);
 
-    if (k == DN_FILTERKIND) {
-        if (!delta)
-            return 1;
-        d = dc_steps(id, delta);
-        if (d) {
-            digifilter_page_enc(id, d);
-            dn_store_dirty = 1;
-            DN_INVALIDATE(dc_view);
-        }
-        return 1;
-    }
     if (k == DN_FEKIND) {
         if (!delta)
             return 1;
@@ -457,7 +423,7 @@ int digictl_enc(void *brain, void *ev)
         case 4: digieq_low_d = clampi(digieq_low_d + d, 0, 127); break;
         case 5: digieq_high_on = (d > 0); break;
         case 6: digieq_high_d = clampi(digieq_high_d + d, 0, 127); break;
-        case 7: digimod_dest = clampi(digimod_dest + (d > 0 ? 1 : -1), 0, 6); break;
+        case 7: digimod_dest = clampi(digimod_dest + (d > 0 ? 1 : -1), 0, 5); break;
         case 8: digimod_voice = clampi(digimod_voice + (d > 0 ? 1 : -1), 1, 8); break;
         case 9: digimeter_on = (d > 0); break;
         default: break;
@@ -495,8 +461,8 @@ static int kind_index(char *view, int kind)
     return -1;
 }
 
-/* LEFT / RIGHT rotate our three pages (DIGI FX -> FILTER -> FOLD/EQ -> ...).
- * No stock key is taken; triggers on DIGI FILTER route voices. */
+/* LEFT / RIGHT rotate our two pages (DIGI FX <-> DIGI FOLD/EQ).
+ * No stock key is taken. */
 int digictl_key(void *brain, void *ev)
 {
     int id = *(int *)((char *)ev + 12);
@@ -508,7 +474,7 @@ int digictl_key(void *brain, void *ev)
     if (!(flags & 1) || (flags & 0x10) || (flags & 8))
         return 0;                               /* ignore key-repeat */
     k = cur_kind(dc_view);
-    if (k != DN_FXKIND && k != DN_FILTERKIND && k != DN_FEKIND)
+    if (k != DN_FXKIND && k != DN_FEKIND)
         return 0;
     if (id == 17 || id == 18) {                 /* LEFT / RIGHT: rotate pages */
         for (i = 0; i < DN_NPAGES; i++)
@@ -522,11 +488,6 @@ int digictl_key(void *brain, void *ev)
             return 1;
         }
         return 0;
-    }
-    if (k == DN_FILTERKIND && digifilter_page_key(id, flags)) {
-        dn_store_dirty = 1;
-        DN_INVALIDATE(dc_view);
-        return 1;
     }
     return 0;
 }

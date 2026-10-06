@@ -21,7 +21,7 @@ import sys
 DIGIEMU = os.environ.get("DIGIEMU", r"C:\Users\benan\Music\ELEKTRON\digiemu-main")
 sys.path.insert(0, DIGIEMU)
 
-SITE = 0x400ED94E              # stock central CC router (patched by digictl 1.7)
+SITE = 0x400ED94E              # stock central CC router (patched by digictl 1.9)
 RET = 0x40094448               # an `rts` in the main OS (our call returns here)
 SCRATCH = 0x80007000           # free SRAM scratch stack
 FLAGS = dict(unblock=True, softfloat=True, bitmap=True, dsp=True)
@@ -34,10 +34,6 @@ CASES = [
     (40, 64, "digifold_amount", 64),
     (69, 12, "digieq_low_d", 12),
     (96, 99, "digieq_high_d", 99),
-    (100, 64, "digifilter_mode", 2),
-    (101, 33, "digifilter_freq", 33),
-    (103, 77, "digifilter_reso", 77),
-    (97, 127, "digifilter_on", 1),
 ]
 
 

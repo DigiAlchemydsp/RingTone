@@ -1,9 +1,9 @@
 # DIGI MIDI CC control (Digitone mk1, OS 1.43)
 
-Status: **implemented (digictl 1.7), verified in digiemu (hook path).** The
-DIGI FX / FILTER / FOLD-EQ parameters respond to **incoming MIDI Control
-Change** messages, like the stock internal parameters, so they can be played
-and sequenced from an external controller/DAW.
+Status: **implemented (digictl 1.9), verified in digiemu (hook path).** The
+DIGI FX / FOLD-EQ parameters respond to **incoming MIDI Control Change**
+messages, like the stock internal parameters, so they can be played and
+sequenced from an external controller/DAW.
 
 ## How it is hooked
 
@@ -28,8 +28,7 @@ so a CC move is saved with the pattern (see `docs/PATTERN-STORAGE.md`).
 ## CC map
 
 Only CC numbers the **stock DN CC table does not use** are taken (the table
-lives at `0x4018D104`, 182 entries; free CCs are `0,8,11,36,37,40,67,68,69,96,
-97,100,101,103`). Continuous parameters use the undefined CCs; the risky
+lives at `0x4018D104`, 182 entries; the ones we use are listed below). The risky
 `CC11` (Expression) is only a Toggle.
 
 | CC | parameter | notes |
@@ -43,13 +42,8 @@ lives at `0x4018D104`, 182 entries; free CCs are `0,8,11,36,37,40,67,68,69,96,
 | `68`  | EQ HIGH on/off | >=64 = ON |
 | `69`  | EQ LOW gain | 0..127 (64 = flat) |
 | `96`  | EQ HIGH gain | 0..127 (64 = flat) |
-| `97`  | FILTER on/off | >=64 = ON |
-| `100` | FILTER mode | 0..127 -> BP / BP2 / COMB / TRASH (quarters) |
-| `101` | FILTER freq | 0..127 |
-| `103` | FILTER reso | 0..127 |
 
-Not CC-controlled (page only): `digifilter_vmask` (which voices), the meter,
-and the parked `digimod_*` LFO bridge.
+Not CC-controlled (page only): the meter and the parked `digimod_*` LFO bridge.
 
 Incoming CCs on **any** MIDI channel drive the (global) master FX; the values
 follow the active pattern and are saved with it.

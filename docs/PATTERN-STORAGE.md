@@ -1,15 +1,15 @@
 # Per-pattern storage for the DIGI FX params (Digitone mk1, OS 1.43)
 
-Status: **implemented (digictl; current 1.8, shipped in the merged `tonefx`
+Status: **implemented (digictl; current 1.9, shipped in the merged `tonefx`
 mod), verified in digiemu.** The FX parameters save and reload with the pattern,
 like stock parameters, instead of living only in the mod's `.bss`.
 
 ## The problem
 
-The DIGI FX / FILTER / FOLD-EQ parameters (`digiring_*`, `digieq_*`,
-`digifold_*`, `digifilter_*`, `digimeter_on`, `digimod_*`) are C globals in the
-mods' `.bss` (RAM `0x47BE0000-0x47C00000`). That region is cleared at boot, so
-the settings were lost at power-off and did not change with the pattern.
+The DIGI FX / FOLD-EQ parameters (`digiring_*`, `digieq_*`, `digifold_*`,
+`digimeter_on`, `digimod_*`) are C globals in the mods' `.bss` (RAM
+`0x47BE0000-0x47C00000`). That region is cleared at boot, so the settings were
+lost at power-off and did not change with the pattern.
 
 ## The pattern store (measured)
 
@@ -43,21 +43,20 @@ per pattern.
 
 ## The layout
 
-`digictl` keeps 21 parameters there:
+`digictl` keeps 12 parameters there:
 
 ```
 +0..3   "DGX1" magic
-+4..5   version (2: the params are 0..127)
-+6..7   count (21)
-+8..   21 x int16, big-endian, in DN_STORE order
++4..5   version (3: the params are 0..127)
++6..7   count (12)
++8..   12 x int16, big-endian, in DN_STORE order
 ```
 
-The 21 params are the old 17 (ring, EQ, fold, filter on/mode/freq/reso/vmask,
-meter, LFO bridge) plus the four COMB/TRASH knobs (`digifilter_delay/harm/damp/
-fb`) appended before `digimeter_on`. The version stays 2: an older 17-value
-block reads the four new words from the still-zero tail of the reserved 64-byte
-area, so they default to 0 (the comb is unchanged), and the tail is rewritten on
-the next page edit.
+The 12 params are ring (on, depth, rate), EQ (low on, high on, low, high),
+fold (on, amount), meter (on) and the LFO bridge (dest, voice). Version 3
+dropped the earlier per-voice-filter params; an older block (version 2) fails
+the magic check and is treated as a fresh pattern, so it starts from the live
+values.
 
 `ev_tick` (one UI frame) runs `dn_store_sync()`:
 
