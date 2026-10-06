@@ -4,7 +4,7 @@
 
 > **This suite has a new home: [Tone+FX](https://github.com/DigiAlchemydsp/Tone-FX/releases).**
 > RingTone was the first cut; it now ships packaged as the **Tone+FX** suite
-> (ring, EQ, fold, per-voice filter, meter and the DIGI pages). **Download the
+> (ring, EQ, fold, meter and the DIGI pages). **Download the
 > latest release from
 > [github.com/DigiAlchemydsp/Tone-FX/releases](https://github.com/DigiAlchemydsp/Tone-FX/releases).**
 > This repo is kept for reference until it is merged/deprecated.
