@@ -5,35 +5,63 @@ digiemu.** OS 1.43. Goal: let the four internal (synth) tracks' sequencer
 **record** Tone+FX parameter changes as parameter locks and **play them back**,
 so the master FX are automated per step like stock parameters.
 
-## Implemented (verified in digiemu `dn1-2.3d-905bf82e`)
+## Implemented (raw bridge; verified in digiemu)
 
 - Five params are automated for now, on **spare lock ids 60..64** (the stock slot
-  table `0x4018FE98` only maps ids 0..59 and 73..76, so the stock engine ignores
-  these): ring depth, ring rate, fold amount, EQ low, EQ high.
-- **Record:** on the DIGI FX / FOLD-EQ pages, hold a **trig key** (1..16) and
-  turn the matching encoder; `digictl` writes the value into that step's lock
-  word for the reserved id. Verified: hold trig 1, turn RING depth -> the lock
-  word `id60` goes `0xFFFF` -> `54`.
+  table `0x4018FE98` only maps ids 0..59 and 73..76): ring depth, ring rate, fold
+  amount, EQ low, EQ high.
+- **Record:** on the DIGI FX / FOLD-EQ pages, hold a **trig key** and turn the
+  matching encoder; `digictl` writes the value into that step's lock word.
+  Verified: lock `id60` goes `0xFFFF` -> `54`.
 - **Playback:** `digictl_tick` reads the current step (`0x4138E1C8`) and, for
   each reserved id, the first non-`0xFFFF` lock across the four tracks, then
-  drives the FX global. Verified: poking `id60 = 42` -> `digiring_depth = 42`;
-  `id60 = 99` -> `99`.
-- The track is the last `T1..T4` pressed (tracked in `digictl_key`); no active
-  track global was found, so we track it ourselves.
+  drives the FX global. Verified: poke `id60 = 42` -> `digiring_depth = 42`.
 
-### Caveats / next
+## Hardware findings — why the raw bridge is NOT unified (2.3d, unit)
 
-- Playback runs at the **UI tick** rate (`digictl_tick`), not the audio block
-  rate: the render events (`ev_render_in/out`) did not fire in the idle emulator,
-  and a p-lock only changes at a step boundary, so tick rate is ample.
-- The record gesture uses trig 1..16 = steps 1..16 (pattern page 1); the other
-  three pattern pages are not wired yet.
-- Only 5 of the params are bridged; ring on/off, fold on/off and EQ on/off are
-  toggles and can be added the same way.
-- The per-pattern store still holds the base (non-automated) value; a lock
-  overrides it for that step. The store was bumped to v3 in 2.3c.
-- Needs a **hardware pass** (record a lock, play, confirm the FX follow, and that
-  the stock engine is untouched on the spare ids).
+The user reported: automation works but **the trig does not light yellow**,
+**CLEAR SEQUENCE does not remove it**, and it **only fires ~1/4 of the time**.
+
+Root cause: writing the 16-bit **lock word** is only one of the pieces the stock
+sequencer keeps per locked step. The stock path also updates:
+
+1. **Per-step lock/trig state** used by the display and by CLEAR. `plock2sound`
+   reads a byte at `pattern + track*0x3D0 + step + 0x180` (a fresh pattern reads
+   `0xFF` there, so it is *not* a simple "has locks" bit — the exact encoding is
+   still to pin). The raw bridge never touches it, so the trig stays plain and
+   CLEAR (which walks the stock state) leaves our lock word behind.
+2. **The live-frame apply** (`0x400090F2`, locks -> `0x80001502 + 106*v + 2*slot`,
+   gated by a per-step byte). Our spare ids are not in the slot table, so the
+   stock apply skips them; we re-read the lock word ourselves instead.
+3. **The step/page index.** The 16 trig keys are the **current pattern page's**
+   steps; our record always writes steps 0..15 (page 1), while `0x4138E1C8` is
+   the global 0..63 step — hence the automation only lines up on 1 of the 4
+   pages. The active-page global was not found (the PAGE key produced no small
+   counter in the scanned UI RAM).
+
+## The unified approach (recommended)
+
+Do **not** hand-write the lock bytes. Hook the **stock "add parameter lock"**
+path so the stock does its own bookkeeping (step state, display, CLEAR, apply):
+
+- Find the function the stock calls when a knob moves with a trig held in GRID
+  RECORDING (it writes the lock word and sets the step state). Call it from
+  `digictl_enc` with the reserved id + value + the active track/step, or hook it
+  to mirror our page edits. That gives yellow trigs, CLEAR, and the correct
+  page/step for free.
+- For the step/page, read the same page the stock uses (find the active-page
+  global, or let the stock add-lock call derive it).
+
+The larger, cleaner alternative (the proper long-term fix) is to add our params
+to the stock **parameter table** so they are real, lockable parameters; then the
+whole stock UI/sequencer/LFO/display stack handles them natively.
+
+## Open items
+
+- Locate the stock **add-lock** function and the **active-page** global.
+- Pin the per-step byte at `pattern + track*0x3D0 + step + 0x180`.
+- Then re-implement record via the stock call and verify on hardware (yellow
+  trig, CLEAR, all four pages).
 
 ## Why it does not work today
 

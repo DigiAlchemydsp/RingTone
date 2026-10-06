@@ -237,6 +237,11 @@ static void dn_plock_record(int kind, int enc)
     lp = dn_lock(dc_track, step, lid);
     if (lp)
         *lp = (unsigned short)val;
+    /* NOTE: the stock display (yellow trig) and CLEAR SEQUENCE use more state
+     * than the raw lock word (a per-step byte around pattern + track*0x3d0 +
+     * step + 0x180 that plock2sound reads, plus the live-frame apply). Writing
+     * the lock word alone is why the trig does not light yellow and CLEAR does
+     * not remove it. See docs/PLOCK-AUTOMATION.md for the unified approach. */
 }
 
 static int clampi(int v, int lo, int hi);
