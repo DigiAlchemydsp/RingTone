@@ -136,6 +136,109 @@ static void dn_store_sync(void)
         dn_store_copy[i] = b[i];
 }
 
+/* ---- sequencer p-lock automation --------------------------------------------
+ * The sequencer's per-step parameter locks are 80 int16 per step:
+ *   locks(track, step) = pattern + 0x1e80 + track*0x284f + step*0xa0
+ * (0xffff = no lock). The stock slot table (0x4018fe98) only maps lock ids
+ * 0..59 and 73..76, so ids 60..72 are free: the stock engine ignores them. We
+ * reserve 60..64 for five FX params, let the DIGI pages write them while a trig
+ * is held, and read them back each block so the sequencer automates the FX.
+ * See docs/PLOCK-AUTOMATION.md. */
+#define DN_LK_BASE   0x1E80u
+#define DN_LK_TRACK  0x284Fu
+#define DN_LK_STEP   0xA0u
+#define DN_LK_NONE   0xFFFFu
+#define DN_STEP_PTR  0x4138E1C8u          /* current play step (word) */
+#define DN_LK_RING_DEPTH 60
+#define DN_LK_RING_RATE  61
+#define DN_LK_FOLD       62
+#define DN_LK_EQ_LO      63
+#define DN_LK_EQ_HI      64
+
+static int dc_track;                      /* 0..3, last T1..T4 pressed */
+static unsigned dc_trig;                  /* held trig keys, bit 0..15 */
+
+static volatile unsigned short *dn_lock(int track, int step, int id)
+{
+    unsigned p = *(volatile unsigned *)0x4138E214u;
+    if (p < DN_PAT_BASE ||
+        p >= DN_PAT_BASE + (unsigned)DN_PAT_SLOTS * DN_PAT_STRIDE)
+        return 0;
+    return (volatile unsigned short *)(p + DN_LK_BASE
+             + (unsigned)track * DN_LK_TRACK + (unsigned)step * DN_LK_STEP
+             + (unsigned)id * 2);
+}
+
+/* read the current step's locks (any track) and drive the FX globals */
+static void dn_plock_read(void)
+{
+    static const unsigned char ids[5] = {
+        DN_LK_RING_DEPTH, DN_LK_RING_RATE, DN_LK_FOLD, DN_LK_EQ_LO, DN_LK_EQ_HI
+    };
+    int step = *(volatile unsigned short *)DN_STEP_PTR & 0x3f;
+    int i, t;
+    for (i = 0; i < 5; i++) {
+        int val = -1;
+        for (t = 0; t < 4 && val < 0; t++) {
+            volatile unsigned short *lp = dn_lock(t, step, ids[i]);
+            if (lp && *lp != DN_LK_NONE)
+                val = *lp;
+        }
+        if (val >= 0) {
+            switch (i) {
+            case 0: digiring_depth = val; break;
+            case 1: digiring_freq = val; break;
+            case 2: digifold_amount = val; break;
+            case 3: digieq_low_d = val; break;
+            case 4: digieq_high_d = val; break;
+            }
+        }
+    }
+}
+
+/* the reserved lock id a page encoder edits, or -1 */
+static int dn_plock_id(int kind, int id)
+{
+    if (kind == DN_FXKIND) {
+        if (id == 2) return DN_LK_RING_DEPTH;
+        if (id == 3) return DN_LK_RING_RATE;
+    } else if (kind == DN_FEKIND) {
+        if (id == 2) return DN_LK_FOLD;
+        if (id == 4) return DN_LK_EQ_LO;
+        if (id == 6) return DN_LK_EQ_HI;
+    }
+    return -1;
+}
+
+/* write the edited param into the held trig's step lock (if any) */
+static void dn_plock_record(int kind, int enc)
+{
+    int lid = dn_plock_id(kind, enc);
+    int step, val;
+    volatile unsigned short *lp;
+    if (!dc_trig || lid < 0)
+        return;
+    for (step = 0; step < 16 && !((dc_trig >> step) & 1); step++)
+        ;
+    if (step >= 16)
+        return;
+    switch (lid) {
+    case DN_LK_RING_DEPTH: val = digiring_depth; break;
+    case DN_LK_RING_RATE:  val = digiring_freq; break;
+    case DN_LK_FOLD:       val = digifold_amount; break;
+    case DN_LK_EQ_LO:      val = digieq_low_d; break;
+    case DN_LK_EQ_HI:      val = digieq_high_d; break;
+    default: return;
+    }
+    if (val < 0)
+        val = 0;
+    if (val > 127)
+        val = 127;
+    lp = dn_lock(dc_track, step, lid);
+    if (lp)
+        *lp = (unsigned short)val;
+}
+
 static int clampi(int v, int lo, int hi);
 
 /* ---- MIDI CC control ---------------------------------------------------------
@@ -189,11 +292,10 @@ static int clampi(int v, int lo, int hi)
 void digictl_mod_in(void)
 {
     int idx, d = digimod_dest, v = digimod_voice;
-    if (v < 1 || v > 8)
+    dn_plock_read();                     /* sequencer p-locks -> the FX globals */
+    if (v < 1 || v > 8 || d <= 0)
         return;
     idx = clampi(DN_FREQ_REC(v) >> 8, 0, 127);
-    if (d <= 0)
-        return;
     switch (d) {
     case 1: digiring_depth = idx; break;                  /* all 0..127 now */
     case 2: digiring_freq = idx; break;
@@ -373,6 +475,7 @@ void digictl_tick(void *ctrl)
     int k;
     (void)ctrl;
     dn_store_sync();
+    dn_plock_read();                     /* sequencer p-locks -> the FX globals */
     if (dc_vis)
         dc_vis--;
     if (dc_vis > 0 && dc_view) {
@@ -428,6 +531,7 @@ int digictl_enc(void *brain, void *ev)
         case 9: digimeter_on = (d > 0); break;
         default: break;
         }
+        dn_plock_record(k, id);          /* held trig -> write a step lock */
         dn_store_dirty = 1;
         DN_INVALIDATE(dc_view);
         return 1;
@@ -446,6 +550,7 @@ int digictl_enc(void *brain, void *ev)
     case 9: digimeter_on = (d > 0); break;
     default: break;
     }
+    dn_plock_record(k, id);              /* held trig -> write a step lock */
     dn_store_dirty = 1;
     DN_INVALIDATE(dc_view);
     return 1;
@@ -471,6 +576,20 @@ int digictl_key(void *brain, void *ev)
     (void)brain;
     if (!master_live(dc_view))
         return 0;
+    /* track select + held trigs, for p-lock recording (stock still handles
+     * both keys: we only observe them) */
+    if (id >= 42 && id <= 45) {                 /* T1..T4 */
+        if (flags & 1)
+            dc_track = id - 42;
+        return 0;
+    }
+    if (id >= 26 && id <= 41) {                 /* trig 1..16 */
+        if (flags & 1)
+            dc_trig |= 1u << (id - 26);
+        else
+            dc_trig &= ~(1u << (id - 26));
+        return 0;
+    }
     if (!(flags & 1) || (flags & 0x10) || (flags & 8))
         return 0;                               /* ignore key-repeat */
     k = cur_kind(dc_view);
