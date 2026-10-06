@@ -17,51 +17,54 @@ so the master FX are automated per step like stock parameters.
   each reserved id, the first non-`0xFFFF` lock across the four tracks, then
   drives the FX global. Verified: poke `id60 = 42` -> `digiring_depth = 42`.
 
-## Hardware findings — why the raw bridge is NOT unified (2.3d, unit)
+## Hardware findings and the fix (2.3d)
 
-The user reported: automation works but **the trig does not light yellow**,
+The unit showed: automation works but **the trig does not light yellow**,
 **CLEAR SEQUENCE does not remove it**, and it **only fires ~1/4 of the time**.
 
-Root cause: writing the 16-bit **lock word** is only one of the pieces the stock
-sequencer keeps per locked step. The stock path also updates:
+The stock p-lock accessors were then located (all in the `0x40023xxx` block):
 
-1. **Per-step lock/trig state** used by the display and by CLEAR. `plock2sound`
-   reads a byte at `pattern + track*0x3D0 + step + 0x180` (a fresh pattern reads
-   `0xFF` there, so it is *not* a simple "has locks" bit — the exact encoding is
-   still to pin). The raw bridge never touches it, so the trig stays plain and
-   CLEAR (which walks the stock state) leaves our lock word behind.
-2. **The live-frame apply** (`0x400090F2`, locks -> `0x80001502 + 106*v + 2*slot`,
-   gated by a per-step byte). Our spare ids are not in the slot table, so the
-   stock apply skips them; we re-read the lock word ourselves instead.
-3. **The step/page index.** The 16 trig keys are the **current pattern page's**
-   steps; our record always writes steps 0..15 (page 1), while `0x4138E1C8` is
-   the global 0..63 step — hence the automation only lines up on 1 of the 4
-   pages. The active-page global was not found (the PAGE key produced no small
-   counter in the scanned UI RAM).
+| addr | what |
+|---|---|
+| `0x40023CC0` | has-lock(track, step, id) |
+| `0x40023D22` | get-lock(track, step, id) |
+| `0x40023DD4` | count locks in a track |
+| `0x40023ED2` | recount **one step's** locks into its count word |
+| `0x40023FAA` | rebuild the **per-id presence flags** for a track |
+| `0x40024052` | remove one lock (writes `0xFFFF`, then recounts) |
+| `0x40024124` | clear all locks on a step |
 
-## The unified approach (recommended)
+So a locked step keeps **three** things, and writing only the value word missed
+two:
 
-Do **not** hand-write the lock bytes. Hook the **stock "add parameter lock"**
-path so the stock does its own bookkeeping (step state, display, CLEAR, apply):
+1. the **lock value** at `base + step*0xA0 + id*2` (`base = pattern + 0x1E80 +
+   track*0x284F`); `0xFFFF` = unlocked;
+2. the **per-step lock count** at `base + step*0xA0 + 158` (word 79 of the 80-word
+   step block) — the display reads this to draw the **yellow trig**;
+3. the **per-id presence flag** at `base + 0x2800 + id` (byte; the `0x4F` = 79
+   bytes at the end of the `0x284F` stride) — 1 if that id is locked anywhere on
+   the track.
 
-- Find the function the stock calls when a knob moves with a trig held in GRID
-  RECORDING (it writes the lock word and sets the step state). Call it from
-  `digictl_enc` with the reserved id + value + the active track/step, or hook it
-  to mirror our page edits. That gives yellow trigs, CLEAR, and the correct
-  page/step for free.
-- For the step/page, read the same page the stock uses (find the active-page
-  global, or let the stock add-lock call derive it).
+`digictl` now writes all three: after the value word it recounts the step into
+`+158` and sets the presence byte (`dn_plock_fixup`), mirroring `0x40023ED2` /
+`0x40023FAA`. Verified in digiemu: the step count goes `0 -> 1` and the presence
+flag `0 -> 1` alongside the value. This is what drives the yellow trig and lets
+CLEAR find and remove the locks.
 
-The larger, cleaner alternative (the proper long-term fix) is to add our params
-to the stock **parameter table** so they are real, lockable parameters; then the
-whole stock UI/sequencer/LFO/display stack handles them natively.
+## Still open: the step/page index (~1/4)
 
-## Open items
+The 16 trig keys are the **current pattern page's** steps; our record always
+writes steps 0..15 (page 1), while the playback reader uses the global 0..63 step
+(`0x4138E1C8`) — so it only lines up on one of the four pages. The active-page
+global was not found (PAGE/trig presses only changed UI redraw bytes in the
+scanned RAM). Next: find the page state (or read it from the same context the
+stock add-lock uses), then map the held trig to `page*16 + trig`.
 
-- Locate the stock **add-lock** function and the **active-page** global.
-- Pin the per-step byte at `pattern + track*0x3D0 + step + 0x180`.
-- Then re-implement record via the stock call and verify on hardware (yellow
-  trig, CLEAR, all four pages).
+## Longer term
+
+Adding our params to the stock **parameter table** would make them real, lockable
+parameters so the whole stock UI/sequencer/LFO/display stack handles them
+natively (no raw writes at all).
 
 ## Why it does not work today
 

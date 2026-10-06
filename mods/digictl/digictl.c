@@ -210,6 +210,28 @@ static int dn_plock_id(int kind, int id)
     return -1;
 }
 
+/* Rebuild the per-step lock count and the per-id presence flag for a track,
+ * exactly as the stock does after it edits a lock (0x40023ED2 / 0x40023FAA):
+ *   - per-step block is 0x50 words (79 lock words + the count at +158);
+ *   - the count lives at  base + step*0x50 + 79  (word);
+ *   - per-id flags live at  base + 0x2800 + id  (byte), 1 = locked anywhere. */
+static void dn_plock_fixup(int track, int step, int id)
+{
+    unsigned p = *(volatile unsigned *)0x4138E214u;
+    volatile unsigned short *base;
+    int i, count = 0;
+    if (p < DN_PAT_BASE ||
+        p >= DN_PAT_BASE + (unsigned)DN_PAT_SLOTS * DN_PAT_STRIDE)
+        return;
+    base = (volatile unsigned short *)(p + DN_LK_BASE
+                                       + (unsigned)track * DN_LK_TRACK);
+    for (i = 0; i < 79; i++)
+        if (base[step * 0x50 + i] != DN_LK_NONE)
+            count++;
+    base[step * 0x50 + 79] = (unsigned short)count;         /* yellow trig */
+    ((volatile unsigned char *)base)[0x2800 + id] = 1;      /* id locked */
+}
+
 /* write the edited param into the held trig's step lock (if any) */
 static void dn_plock_record(int kind, int enc)
 {
@@ -237,11 +259,7 @@ static void dn_plock_record(int kind, int enc)
     lp = dn_lock(dc_track, step, lid);
     if (lp)
         *lp = (unsigned short)val;
-    /* NOTE: the stock display (yellow trig) and CLEAR SEQUENCE use more state
-     * than the raw lock word (a per-step byte around pattern + track*0x3d0 +
-     * step + 0x180 that plock2sound reads, plus the live-frame apply). Writing
-     * the lock word alone is why the trig does not light yellow and CLEAR does
-     * not remove it. See docs/PLOCK-AUTOMATION.md for the unified approach. */
+    dn_plock_fixup(dc_track, step, lid);   /* stock count + presence flag */
 }
 
 static int clampi(int v, int lo, int hi);
