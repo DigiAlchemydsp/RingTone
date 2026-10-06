@@ -1,11 +1,11 @@
 {
  "id": "tonefx",
- "version": "2.4a",
+ "version": "2.3b",
  "title": "Tone+FX",
  "category": "Sound",
  "author": "Digital Alchemy DSP",
  "license": "GPL-2.0-or-later",
- "description": "The Tone+FX suite as one elemod: master ring modulator (digiring), tone-tilt EQ (digieq), wavefolder (digifold), per-voice multimode filter (digifilter), output meter (digimeter) and the DIGI FX / DIGI FILTER / DIGI FOLD-EQ master pages with all their controls (digictl). The per-voice filter's COMB/TRASH modes use smoothed fractional combs with four knobs (delay, harmonics, damping, feedback) on the one DIGI FILTER page. Settings are stored per pattern and the FX respond to incoming MIDI CC. It REQUIRES the core (core-dn1) and does not include it, so it combines with any other elekloader mods.",
+ "description": "The Tone+FX suite as one elemod: master ring modulator (digiring), tone-tilt EQ (digieq), wavefolder (digifold), per-voice multimode filter (digifilter), output meter (digimeter) and the DIGI FX / DIGI FILTER / DIGI FOLD-EQ master pages with all their controls (digictl). Settings are stored per pattern and the FX respond to incoming MIDI CC. It REQUIRES the core (core-dn1) and does not include it, so it combines with any other elekloader mods.",
  "device": "digitone-mk1",
  "os": "1.43",
  "sources": [

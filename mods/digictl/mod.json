@@ -5,7 +5,7 @@
  "category": "Utilities",
  "author": "Digital Alchemy DSP",
  "license": "GPL-2.0-or-later",
- "description": "The DIGI FX and DIGI FILTER pages on the master page tree (FUNC+LFO), as the fourth and fifth entries. DIGI FX: enable and tune EQ (on, low, high), RING (on, depth, frequency), FOLD (on, amount) and the level meter. DIGI FILTER: on/off, mode (BP/BP2/COMB/TRASH), freq, reso, the four COMB/TRASH knobs (delay, harmonics, damping, feedback) and which of the eight voices are filtered (trig keys 1-8 toggle them). Encoders A-H edit one parameter each (OS-style step acceleration). Settings are stored per pattern inside the saved pattern data (they follow pattern switch / reload and a project save, like stock parameters). It drives digieq / digiring / digifold / digimeter / digifilter (all required).",
+ "description": "The DIGI FX and DIGI FILTER pages on the master page tree (FUNC+LFO), as the fourth and fifth entries. DIGI FX: enable and tune EQ (on, low, high), RING (on, depth, frequency), FOLD (on, amount) and the level meter. DIGI FILTER: on/off, mode (BP/BP2/COMB/TRASH), freq, reso and which of the eight voices are filtered (E/F all voices on/off, trig keys 1-8 toggle one voice each). Encoders A-H edit one parameter each, at the stock one-step-per-detent rate with acceleration (OS-style accumulation). Settings are stored per pattern inside the saved pattern data (they follow pattern switch / reload and a project save, like stock parameters). It drives digieq / digiring / digifold / digimeter / digifilter (all required).",
  "device": "digitone-mk1",
  "os": "1.43",
  "sources": ["digictl.c", "cc_glue.s"],

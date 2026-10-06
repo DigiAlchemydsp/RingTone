@@ -148,12 +148,12 @@ def main():
         idx = struct.unpack('>I', m.peek(view + 144, 4))[0]
         assert idx == kinds.index(1), "RIGHT did not reach DIGI FILTER (idx=%d)" % idx
 
-        # mode: encoder B, two steps BP -> BP2 -> COMB
+        # mode: encoder B, two steps BP -> BP2 -> COMB (1 step = 4 counts)
         f0 = cap.frames[-1]
-        pc = panelin.feed(m, prof, panelin.encode_encoder(1, 48))
+        pc = panelin.feed(m, prof, panelin.encode_encoder(1, 4))
         pc = spin(pc, a.step)
         f1 = cap.frames[-1]
-        pc = panelin.feed(m, prof, panelin.encode_encoder(1, 48))
+        pc = panelin.feed(m, prof, panelin.encode_encoder(1, 4))
         pc = spin(pc, a.step)
         f2 = cap.frames[-1]
         print("filter page changed per mode step:",

@@ -16,7 +16,7 @@ it combines with `core-dn1-2.0a.elemod` and any other elekloader mods.
 ```powershell
 python -m elekloader.sdk.build . --stock Digitone_and_Digitone_Keys_OS1.43.syx
 python -m elekloader.patch --stock <stock> --mod <core-dn1-2.0a.elemod> `
-  --mod out/tonefx-2.4a.elemod --out ToneFX.syx --version 2.4a
+  --mod out/tonefx-2.3b.elemod --out ToneFX.syx --version 2.3b
 ```
 
 The six component mods stay the source of truth; if their code changes, rebuild

@@ -120,16 +120,16 @@ def main():
             idx = struct.unpack('>I', m.peek(view + 144, 4))[0]
             assert idx == kinds.index(1), "RIGHT did not switch to DIGI FILTER (idx=%d)" % idx
             shot("01-filter-page.png")
-            # mode: encoder B (channel 1) a few steps
-            pc = panelin.feed(m, prof, panelin.encode_encoder(1, 48))
+            # mode: encoder B (channel 1), one step = one detent = 4 counts
+            pc = panelin.feed(m, prof, panelin.encode_encoder(1, 4))
             pc = spin(pc, a.step)
             shot("02-mode-next.png")
             # toggle voice 1 off
             pc = btn(26, True); pc = spin(pc, 4_000_000)
             pc = btn(26, False); pc = spin(pc, a.step)
             shot("03-voice1-off.png")
-            # freq up
-            pc = panelin.feed(m, prof, panelin.encode_encoder(2, 80))
+            # freq up one step
+            pc = panelin.feed(m, prof, panelin.encode_encoder(2, 4))
             pc = spin(pc, a.step)
             shot("04-freq-up.png")
             break

@@ -30,14 +30,13 @@
 #define DN_FILTERKIND 1
 #define DN_FEKIND     2
 #define DN_NPAGES     3
-#define DC_PER_STEP   16
+#define DC_PER_STEP   4
 
 extern int digieq_low_on, digieq_high_on, digieq_low_d, digieq_high_d;
 extern int digiring_on, digiring_depth, digiring_freq;
 extern int digifold_on, digifold_amount;
 extern int digifilter_on, digifilter_mode, digifilter_freq, digifilter_reso,
-           digifilter_vmask, digifilter_delay, digifilter_harm, digifilter_damp,
-           digifilter_fb;
+           digifilter_vmask;
 extern int digimeter_on, digimeter_l, digimeter_r;
 
 /* Track-LFO bridge. A track LFO can target the track's FLTR FREQ; that live
@@ -69,7 +68,7 @@ extern int digifilter_page_key(int id, int flags);
 #define DN_PAT_STRIDE 0x1611Du
 #define DN_PAT_SLOTS  128u
 #define DN_STORE_OFF  0x1040u
-#define DN_STORE_N    21
+#define DN_STORE_N    17
 #define DN_STORE_VER  2
 #define DN_STORE_MAG(a) ((a)[0] == 0x44 && (a)[1] == 0x47 && \
                          (a)[2] == 0x58 && (a)[3] == 0x31 && \
@@ -80,8 +79,7 @@ static int *const dn_fxparam[DN_STORE_N] = {
     &digieq_low_on, &digieq_high_on, &digieq_low_d, &digieq_high_d,
     &digifold_on, &digifold_amount,
     &digifilter_on, &digifilter_mode, &digifilter_freq, &digifilter_reso,
-    &digifilter_vmask, &digifilter_delay, &digifilter_harm, &digifilter_damp,
-    &digifilter_fb,
+    &digifilter_vmask,
     &digimeter_on, &digimod_dest, &digimod_voice,
 };
 
@@ -407,8 +405,11 @@ void digictl_tick(void *ctrl)
     }
 }
 
-/* Stock convention: every parameter is 0..127, so one step is one unit and one
- * notch moves one value (the firmware delivers DC_PER_STEP counts per step). */
+/* Stock convention: every parameter is 0..127, so one step is one unit. The
+ * Digitone panel sends 4 wire counts per encoder detent and the stock 0..127
+ * params move one step per detent (see digiemu's devices/digitone.toml), so one
+ * step is 4 counts. The event delta is the accumulated wire count, clamped to
+ * +/-30 by the encoder driver, so a fast turn naturally gives more steps. */
 
 /* OS-style step: one step per DC_PER_STEP accumulated counts, reset on turn */
 static int dc_steps(int id, int d)
