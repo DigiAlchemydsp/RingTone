@@ -5,7 +5,9 @@
 *.syx.json
 *.syx.map.json
 
-# Build intermediates and outputs (the .elemod in releases/ ARE kept).
+# Built mods, parked/superseded release builds and other outputs. The release
+# repo ships the .elemods; the source repo does not track them.
+*.elemod
 *.work
 *.o
 mods/*/out/
