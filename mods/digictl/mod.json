@@ -1,11 +1,11 @@
 {
  "id": "digictl",
- "version": "1.9",
+ "version": "2.0",
  "title": "Digi FX Control",
  "category": "Utilities",
  "author": "Digital Alchemy DSP",
  "license": "GPL-2.0-or-later",
- "description": "The DIGI FX and DIGI FOLD/EQ pages on the master page tree (FUNC+LFO), as the fourth and fifth entries. DIGI FX: RING (on, depth, frequency) and the level meter. DIGI FOLD/EQ: FOLD (on, amount) and EQ LOW / HIGH (each on/off + amount). Encoders A-H edit one parameter each, at the stock one-step-per-detent rate with acceleration (OS-style accumulation). Settings are stored per pattern inside the saved pattern data (they follow pattern switch / reload and a project save, like stock parameters). It drives digieq / digiring / digifold / digimeter (all required).",
+ "description": "The DIGI RING, DIGI FOLD and DIGI TILT pages on the master page tree (FUNC+LFO), rotated with LEFT/RIGHT or the on-screen < > arrows. The stock top status bar is kept. RING: on/off (A), depth (E), frequency (F). FOLD: on/off (A), fold type CLEAN/MUD/DIST/TRSH (D), amount (E/F/G/H all edit it), with the spiral, the big mode title, the amount slider and the level meter. TILT: on/off (A), low shelf (E), high shelf (H). Stock one-step-per-detent rate with acceleration (OS-style accumulation). Settings are stored per pattern inside the saved pattern data (they follow pattern switch / reload and a project save, like stock parameters). It drives digieq / digiring / digifold / digimeter (all required).",
  "device": "digitone-mk1",
  "os": "1.43",
  "sources": ["digictl.c", "cc_glue.s"],
@@ -20,5 +20,5 @@
   {"event": "ev_render_in", "fn": "digictl_mod_in","order": 40}
  ],
  "requires": ["core", "digieq", "digiring", "digifold", "digimeter"],
- "resources": {"names": ["ui:master page DIGI FX"]}
+ "resources": {"names": ["ui:master page DIGI RING"]}
 }

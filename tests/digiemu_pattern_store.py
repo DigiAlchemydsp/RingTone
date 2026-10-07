@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Digi store: the DIGI FX params are kept in the saved pattern structure.
 
-`digictl` 1.4 writes its 17 parameters into a 64-byte block at
+`digictl` writes its 12 parameters into a 64-byte block at
 `pattern + 0x1040`, where the current pattern is `*(0x4138E214)` and the project
 patterns are `0x407FC414 + slot*0x1611D`. This checks, on a firmware the app
 built from `core-dn1` + the suite mods:
@@ -26,7 +26,7 @@ SOUND_PTR = 0x4138E214
 PAT_BASE = 0x407FC414
 PAT_STRIDE = 0x1611D
 BLK = 0x1040
-N = 17
+N = 12
 WIRE = {4: (3, 0), 27: (4, 0)}          # PTN, trig 2
 GUI_FLAGS = dict(unblock=True, softfloat=True, bitmap=True, dsp=True)
 
@@ -82,16 +82,16 @@ def main():
     spin(8_000_000)
     b0 = rd(SOUND_PTR)
     mag, ver, vals = block(b0)
-    print("pattern 0x%08x magic=%r ver=%s depth=%d eqlo=%d filter=%d"
-          % (b0, mag, ver.hex(), vals[1], vals[5], vals[10]))
-    ok = ok and mag == b"DGX1" and vals[1] == 51 and vals[5] == 33
+    print("pattern 0x%08x magic=%r ver=%s depth=%d lo=%d hi=%d mode=%d"
+          % (b0, mag, ver.hex(), vals[1], vals[4], vals[5], vals[8]))
+    ok = ok and mag == b"DGX1" and vals[1] == 51 and vals[4] == 64 and vals[5] == 64
 
     # the OS must leave the block alone (marker survives a busy run)
     bb = bytearray(m.peek(b0 + BLK, 8 + 2 * N))
-    struct.pack_into(">h", bb, 8 + 2 * 8, 777)      # fold amount
+    struct.pack_into(">h", bb, 8 + 2 * 7, 777)      # fold amount
     m.poke(b0 + BLK, bytes(bb))
     spin(30_000_000)
-    kept = block(b0)[2][8] == 777
+    kept = block(b0)[2][7] == 777
     print("marker survived run:", kept)
     ok = ok and kept
 

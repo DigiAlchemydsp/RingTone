@@ -2,20 +2,23 @@
  * digictl: the master-page UI for the DIGI suite.
  * Digitone mk1 / Keys, OS 1.43.
  *
- * Two pages of our own, appended to the master page tree (view kinds 0, 1),
- * rotated with LEFT / RIGHT while one of them is shown:
+ * Three pages of our own, appended to the master page tree (view kinds 0, 1, 2),
+ * rotated with LEFT / RIGHT (or the on-screen < > arrows):
  *
- *   DIGI FX      kind 0  RING only: on/off, depth, frequency, meter; a low-CPU
- *                        ring animation and depth/frequency bars on the right
- *   DIGI FOLD/EQ kind 1  FOLD amount (+ spiral), EQ LOW / HIGH faders, each
- *                        with its own on/off encoder
+ *   RING  kind 0  E = depth, F = frequency; a centred ring animation, the
+ *                 depth/frequency bars on the right and the values bottom-right
+ *   FOLD  kind 1  A = on/off, D = fold type (CLEAN/MUD/DIST/TRSH, continuous),
+ *                 E/F/G/H = amount; the spiral on the left, the big mode title
+ *                 centred, the amount as a vertical slider next to the meter
+ *   TILT  kind 2  A = on/off, E = low shelf, H = high shelf; a bent response
  *
- * None of the stock pages are touched and no stock key or encoder is taken:
- * the pages are only reached by FUNC+LFO (the cycle) or LEFT/RIGHT.
+ * The stock top status bar (rows 53..63) is left untouched; our drawing stays
+ * below it. None of the stock pages are taken: the pages are reached by FUNC+LFO
+ * or LEFT/RIGHT.
  *
  * The master view (vtable 0x40199BAC) keeps its page kinds in a vector at
- * view+124 (end +128, current index +144). We append kinds 0 and 1 and
- * patch the view's draw (slot 4, 0x40199BBC).
+ * view+124 (end +128, current index +144). We append kinds 0, 1 and 2 and patch
+ * the view's draw (slot 4, 0x40199BBC).
  */
 #include "../../src/corea.h"
 #include "../../src/sin256.h"
@@ -27,12 +30,19 @@
 #define DN_STOCK_DRAW ((void (*)(void *, void *))0x4004DDAE)
 #define DN_FXKIND     0
 #define DN_FEKIND     1
-#define DN_NPAGES     2
+#define DN_EQKIND     2
+#define DN_NPAGES     3
 #define DC_PER_STEP   4
+#define DG_TOP        53            /* rows 53..63 are the stock status bar */
 
-extern int digieq_low_on, digieq_high_on, digieq_low_d, digieq_high_d;
+/* the stock 5-px font tables (glyph widths, bitmap offsets, bitmap bytes) */
+#define DN_FW  ((const unsigned char *)0x402315DC)
+#define DN_FO  ((const unsigned short *)0x402316DC)
+#define DN_FB  ((const unsigned char *)0x402318DC)
+
+extern int digieq_on, digieq_lo, digieq_hi;
 extern int digiring_on, digiring_depth, digiring_freq;
-extern int digifold_on, digifold_amount;
+extern int digifold_on, digifold_amount, digifold_mode;
 extern int digimeter_on, digimeter_l, digimeter_r;
 
 /* Track-LFO bridge. A track LFO can target the track's FLTR FREQ; that live
@@ -41,8 +51,7 @@ extern int digimeter_on, digimeter_l, digimeter_r;
  * params from it, so a track LFO modulates us. */
 int digimod_dest;                    /* 0 off, 1 ring dep, 2 ring frq, 3 fold,
                                         4 EQ low, 5 EQ high.
-                                        Parked: no page readout; the DEST/VOICE
-                                        encoders still drive it for testing. */
+                                        Parked: no page readout. */
 int digimod_voice = 1;               /* 1..8 */
 #define DN_FREQ_REC(v) (*(volatile unsigned short *)(0x80003544u + ((v) - 1) * 0x9E))
 
@@ -54,22 +63,21 @@ int digimod_voice = 1;               /* 1..8 */
  * zero in all 128 slots and the OS's parameter mirror never writes it, but it
  * travels with the pattern. We keep our settings there (pattern + 0x1040), so
  * they follow a pattern switch / reload and survive a project save like stock
- * parameters. `digimod_*` (the LFO bridge) is state, not a sound, and is kept
- * too so a pattern restores the whole page. */
+ * parameters. */
 #define DN_PAT_BASE   0x407FC414u
 #define DN_PAT_STRIDE 0x1611Du
 #define DN_PAT_SLOTS  128u
 #define DN_STORE_OFF  0x1040u
 #define DN_STORE_N    12
-#define DN_STORE_VER  3
+#define DN_STORE_VER  5
 #define DN_STORE_MAG(a) ((a)[0] == 0x44 && (a)[1] == 0x47 && \
                          (a)[2] == 0x58 && (a)[3] == 0x31 && \
-                         (a)[5] == DN_STORE_VER)               /* "DGX1" v3 */
+                         (a)[5] == DN_STORE_VER)               /* "DGX1" v5 */
 
 static int *const dn_fxparam[DN_STORE_N] = {
     &digiring_on, &digiring_depth, &digiring_freq,
-    &digieq_low_on, &digieq_high_on, &digieq_low_d, &digieq_high_d,
-    &digifold_on, &digifold_amount,
+    &digieq_on, &digieq_lo, &digieq_hi,
+    &digifold_on, &digifold_amount, &digifold_mode,
     &digimeter_on, &digimod_dest, &digimod_voice,
 };
 
@@ -148,10 +156,11 @@ static int clampi(int v, int lo, int hi);
 #define DN_CC_RING_RATE  36
 #define DN_CC_FOLD_ON    37
 #define DN_CC_FOLD_AMT   40
-#define DN_CC_EQ_LO_ON   67
-#define DN_CC_EQ_HI_ON   68
+#define DN_CC_FOLD_MODE  41
+#define DN_CC_EQ_ON      67
 #define DN_CC_EQ_LO      69
 #define DN_CC_EQ_HI      96
+#define DN_CC_METER_ON   68
 
 void digictl_cc_apply(int cc, int value)
 {
@@ -162,16 +171,17 @@ void digictl_cc_apply(int cc, int value)
     case DN_CC_RING_RATE:  digiring_freq = v; break;
     case DN_CC_FOLD_ON:    digifold_on = (v >= 64); break;
     case DN_CC_FOLD_AMT:   digifold_amount = v; break;
-    case DN_CC_EQ_LO_ON:   digieq_low_on = (v >= 64); break;
-    case DN_CC_EQ_HI_ON:   digieq_high_on = (v >= 64); break;
-    case DN_CC_EQ_LO:      digieq_low_d = v; break;
-    case DN_CC_EQ_HI:      digieq_high_d = v; break;
+    case DN_CC_FOLD_MODE:  digifold_mode = v; break;
+    case DN_CC_EQ_ON:      digieq_on = (v >= 64); break;
+    case DN_CC_EQ_LO:      digieq_lo = v; break;
+    case DN_CC_EQ_HI:      digieq_hi = v; break;
+    case DN_CC_METER_ON:   digimeter_on = (v >= 64); break;
     default: return;                 /* not ours: stock handles/ignores it */
     }
     dn_store_dirty = 1;              /* persist with the pattern */
 }
 
-static const int dc_kinds[DN_NPAGES] = { DN_FXKIND, DN_FEKIND };
+static const int dc_kinds[DN_NPAGES] = { DN_FXKIND, DN_FEKIND, DN_EQKIND };
 
 #define DN_MASTER_VT  0x40199BAC
 static char *dc_view;               /* the master view, from its last draw */
@@ -189,24 +199,20 @@ static int clampi(int v, int lo, int hi)
 void digictl_mod_in(void)
 {
     int idx, d = digimod_dest, v = digimod_voice;
-    if (v < 1 || v > 8)
+    if (v < 1 || v > 8 || d <= 0)
         return;
     idx = clampi(DN_FREQ_REC(v) >> 8, 0, 127);
-    if (d <= 0)
-        return;
     switch (d) {
-    case 1: digiring_depth = idx; break;                  /* all 0..127 now */
+    case 1: digiring_depth = idx; break;
     case 2: digiring_freq = idx; break;
     case 3: digifold_amount = idx; break;
-    case 4: digieq_low_d = idx; break;
-    case 5: digieq_high_d = idx; break;
+    case 4: digieq_lo = idx; break;
+    case 5: digieq_hi = idx; break;
     default: break;
     }
 }
 
-/* Alive (its primary vtable is still ours) AND drawn recently: the frame count
- * gives a few frames of grace across the tick/draw gap but stops us once the
- * master page tree is left, so no stock key or encoder is ever taken. */
+/* Alive (its primary vtable is still ours) AND drawn recently. */
 static int master_live(char *v)
 {
     return dc_vis > 0 && v && *(int *)v == DN_MASTER_VT;
@@ -227,9 +233,9 @@ static void add_page(char *view)
     if (!v || n < 1 || n > 13)
         return;
     for (i = 0; i < n; i++)
-        if (v[i] >= DN_FXKIND && v[i] <= DN_FEKIND)
+        if (v[i] >= DN_FXKIND && v[i] <= DN_EQKIND)
             return;
-    pos = n >= 4 ? 3 : n;                   /* the fourth and fifth */
+    pos = n >= 4 ? 3 : n;                   /* after the stock master pages */
     nv = DN_OP_NEW(4u * (unsigned)(n + DN_NPAGES));
     if (!nv)
         return;
@@ -237,19 +243,70 @@ static void add_page(char *view)
         if (i == pos) {
             nv[j++] = DN_FXKIND;
             nv[j++] = DN_FEKIND;
+            nv[j++] = DN_EQKIND;
         }
         nv[j++] = v[i];
     }
     if (pos == n) {
         nv[j++] = DN_FXKIND;
         nv[j++] = DN_FEKIND;
+        nv[j++] = DN_EQKIND;
     }
     *(int **)(view + 124) = nv;
     *(int **)(view + 128) = nv + n + DN_NPAGES;
     *(int **)(view + 132) = nv + n + DN_NPAGES;
+    if (*(int *)(view + 144) >= n + DN_NPAGES)
+        *(int *)(view + 144) = 0;
 }
 
-/* ---------------- DIGI FX: RING + animation + value/meter bars ---------------- */
+/* ---------------- small text helpers (stock 5-px font, optional 2x) ---------- */
+static int dg_strw(const char *s, int sc)
+{
+    int w = 0;
+    for (; *s; s++)
+        w += (DN_FW[(unsigned char)*s] + 1) * sc;
+    return w;
+}
+
+static void dg_glyph(void *bmp, int x, int ytop, int ch, int sc)
+{
+    int w = DN_FW[ch & 0xff];
+    int off = DN_FO[ch & 0xff];
+    int c, r;
+    for (c = 0; c < w; c++) {
+        int bits = DN_FB[off + c];
+        for (r = 0; r < 8; r++) {
+            if (bits & (1 << r)) {              /* bit 0 = top of the glyph */
+                int px = x + c * sc;
+                int py = ytop - r * sc;
+                DN_FILLRECT(bmp, px, py, px + sc - 1, py - sc + 1, 1);
+            }
+        }
+    }
+}
+
+static void dg_text(void *bmp, int x, int ytop, const char *s, int sc)
+{
+    for (; *s; s++) {
+        dg_glyph(bmp, x, ytop, (unsigned char)*s, sc);
+        x += (DN_FW[(unsigned char)*s] + 1) * sc;
+    }
+}
+
+/* the page title, centred in the bottom third */
+static void dg_title(void *bmp, const char *s)
+{
+    DN_TEXTF(bmp, DN_FONT5, (128 - dg_strw(s, 1)) / 2, 12, -1, "%s", s);
+}
+
+/* the little < > page arrows, centred vertically on each side */
+static void dg_arrows(void *bmp)
+{
+    dg_glyph(bmp, 3, 30, '<', 1);
+    dg_glyph(bmp, 122, 30, '>', 1);
+}
+
+/* ---------------- RING: animation + value bars ---------------- */
 static unsigned dg_rng = 0x2545f491u;
 static int dg_ang;
 
@@ -261,7 +318,7 @@ static int dg_rand(int m)
 
 static void dg_ring(void *bmp)
 {
-    int cx = 40, cy = 32, R = 17, i, n = 24;
+    int cx = 60, cy = 35, R = 14, i, n = 24;
     int dep = digiring_on ? digiring_depth * 258 : 0;   /* 0..127 -> Q15 */
     for (i = 0; i < n; i++) {
         int a = (i * 256 / n) & 0xff;
@@ -271,7 +328,7 @@ static void dg_ring(void *bmp)
     }
     if (dep > 0) {
         int s = sin256[dg_ang & 0xff], c = sin256[(dg_ang + 64) & 0xff];
-        int amp = (dep * 14) >> 15;
+        int amp = (dep * 13) >> 15;
         int jx = dg_rand(2 * amp + 1) - amp, jy = dg_rand(2 * amp + 1) - amp;
         int x = cx + ((c * R) >> 15) + jx, y = cy + ((s * R) >> 15) + jy;
         DN_FILLRECT(bmp, x - 1, y - 1, x + 1, y + 1, 1);
@@ -281,39 +338,35 @@ static void dg_ring(void *bmp)
 
 static void dg_vbar(void *bmp, int x0, int x1, int num, int den)
 {
-    int h = 48, f;
+    int h = 42, y0 = 8, f;
     if (den <= 0)
         return;
     f = num * h / den;
     if (f < 0) f = 0;
     if (f > h) f = h;
-    DN_FILLRECT(bmp, x0, 6, x1, 6 + h, 0);
-    DN_FILLRECT(bmp, x0, 6, x1, 6 + f, 1);
+    DN_FILLRECT(bmp, x0, y0, x1, y0 + h, 0);
+    DN_FILLRECT(bmp, x0, y0, x1, y0 + f, 1);
 }
 
 static void dg_fx_page(void *bmp)
 {
-    DN_FILLRECT(bmp, 0, 0, 127, 63, 0);
-    DN_TEXTF(bmp, DN_FONT5, 1, 58, -1, "DIGI FX");
-    DN_TEXTF(bmp, DN_FONT5, 56, 58, -1, "RING %s", digiring_on ? "ON" : "OFF");
+    DN_FILLRECT(bmp, 0, 0, 127, DG_TOP - 1, 0);
+    dg_arrows(bmp);
     dg_ring(bmp);
-    DN_TEXTF(bmp, DN_FONT5, 1, 8, -1, "DEP %d", digiring_depth);
-    DN_TEXTF(bmp, DN_FONT5, 46, 8, -1, "FRQ %d", digiring_freq);
-    DN_TEXTF(bmp, DN_FONT5, 1, 0, -1, "LEFT/RIGHT = PAGES");
     dg_vbar(bmp, 104, 106, digiring_on ? digiring_depth : 0, 127);
-    dg_vbar(bmp, 109, 111, digiring_freq, 127);
-    dg_vbar(bmp, 118, 120, digimeter_l, 60);
-    dg_vbar(bmp, 123, 125, digimeter_r, 60);
+    dg_vbar(bmp, 110, 112, digiring_freq, 127);
+    DN_TEXTF(bmp, DN_FONT5, 2, 4, -1, "DEP %d FRQ %d", digiring_depth, digiring_freq);
+    dg_title(bmp, "RING");
 }
 
-/* ---------------- DIGI FOLD / EQ: spiral + faders ---------------- */
+/* ---------------- FOLD: spiral + big mode + amount slider + meter ------------ */
 
 /* the fold amount as a spiral: a straight line at 0, coiling as it folds */
 static void dg_spiral(void *bmp, int amount)
 {
-    int cx = 24, cy = 28, i, n = 44, turns, rmax;
+    int cx = 20, cy = 30, i, n = 44, turns, rmax;
     if (amount <= 0) {                  /* straight when not folding */
-        DN_FILLRECT(bmp, cx - 16, cy, cx + 16, cy, 1);
+        DN_FILLRECT(bmp, cx - 14, cy, cx + 14, cy, 1);
         return;
     }
     turns = 1 + amount * 3 / 128;       /* 1..3 turns */
@@ -328,28 +381,72 @@ static void dg_spiral(void *bmp, int amount)
     }
 }
 
-/* a fader: a body; filled to the value when the band is on, empty when off */
-static void dg_fader(void *bmp, int x, int on, int val, int vmin, int vmax,
-                     const char *name)
+static const char *dg_modename(int m)
 {
-    int y0 = 8, y1 = 44, pos;
-    DN_FRAMERECT(bmp, x - 3, y0 - 1, x + 3, y1 + 1, 1);
-    if (on) {                           /* on: the body fills to the value */
-        val = clampi(val, vmin, vmax);
-        pos = y0 + (val - vmin) * (y1 - y0) / (vmax - vmin);
-        DN_FILLRECT(bmp, x - 2, y0, x + 2, pos, 1);
-    }
-    DN_TEXTF(bmp, DN_FONT5, x - 6, 1, -1, "%s", name);
+    static const char *const n[4] = { "CLEAN", "MUD", "DIST", "TRSH" };
+    return n[m & 3];
 }
 
-static void dg_fe_page(void *bmp)
+static void dg_slider(void *bmp, int x, int val, int vmax)
 {
-    DN_FILLRECT(bmp, 0, 0, 127, 63, 0);
-    DN_TEXTF(bmp, DN_FONT5, 1, 58, -1, "DIGI FOLD / EQ");
-    dg_spiral(bmp, digifold_on ? digifold_amount : 0);   /* fold amount */
-    dg_fader(bmp, 60, digifold_on, digifold_amount, 0, 127, "FOLD");
-    dg_fader(bmp, 84, digieq_low_on, digieq_low_d, 0, 127, "LOW");
-    dg_fader(bmp, 108, digieq_high_on, digieq_high_d, 0, 127, "HIGH");
+    int y0 = 10, y1 = 44, pos;
+    DN_FRAMERECT(bmp, x - 2, y0 - 1, x + 2, y1 + 1, 1);
+    val = clampi(val, 0, vmax);
+    pos = y0 + val * (y1 - y0) / vmax;
+    DN_FILLRECT(bmp, x - 1, y0, x + 1, pos, 1);
+}
+
+static void dg_fold_page(void *bmp)
+{
+    int band = digifold_mode / 32;
+    const char *m;
+    DN_FILLRECT(bmp, 0, 0, 127, DG_TOP - 1, 0);
+    dg_arrows(bmp);
+    dg_spiral(bmp, digifold_on ? digifold_amount : 0);   /* left */
+    if (band > 3) band = 3;
+    m = dg_modename(band);
+    dg_text(bmp, (128 - dg_strw(m, 2)) / 2, 36, m, 2);   /* big, centred */
+    dg_slider(bmp, 94, digifold_on ? digifold_amount : 0, 127);
+    dg_vbar(bmp, 106, 108, digimeter_l, 60);
+    dg_vbar(bmp, 113, 115, digimeter_r, 60);
+    DN_TEXTF(bmp, DN_FONT5, 89, 3, -1, "%d", digifold_amount);
+    dg_title(bmp, "FOLD");
+}
+
+/* ---------------- TILT: a bent low/high shelf curve ---------------- */
+
+static int dg_eq_y(int x)
+{
+    int lo = 30 + (digieq_lo - 64) / 3;
+    int hi = 30 + (digieq_hi - 64) / 3;
+    int y;
+    if (!digieq_on)
+        return 30;
+    if (x < 24)
+        y = lo;
+    else if (x < 48)
+        y = lo + (30 - lo) * (x - 24) / 24;
+    else if (x < 80)
+        y = 30;
+    else if (x < 104)
+        y = 30 + (hi - 30) * (x - 80) / 24;
+    else
+        y = hi;
+    return clampi(y, 8, 50);
+}
+
+static void dg_eq_page(void *bmp)
+{
+    int x;
+    DN_FILLRECT(bmp, 0, 0, 127, DG_TOP - 1, 0);
+    dg_arrows(bmp);
+    for (x = 8; x <= 120; x += 2)           /* 0 dB reference */
+        DN_FILLRECT(bmp, x, 30, x, 30, 1);
+    for (x = 8; x <= 120; x++)
+        DN_FILLRECT(bmp, x, dg_eq_y(x), x, dg_eq_y(x), 1);
+    DN_TEXTF(bmp, DN_FONT5, 4, 6, -1, "LO %d", digieq_lo);
+    DN_TEXTF(bmp, DN_FONT5, 96, 6, -1, "HI %d", digieq_hi);
+    dg_title(bmp, "TILT");
 }
 
 /* vtable slot 4 of the master view: draw */
@@ -364,31 +461,26 @@ void digictl_mdraw(void *view, void *bmp)
     if (k == DN_FXKIND)
         dg_fx_page(bmp);
     else if (k == DN_FEKIND)
-        dg_fe_page(bmp);
+        dg_fold_page(bmp);
+    else if (k == DN_EQKIND)
+        dg_eq_page(bmp);
 }
 
-/* every UI frame: keep our animated pages redrawing while shown */
+/* every UI frame: keep the master view redrawing while it is shown, so the
+ * animation, the meter and LEFT/RIGHT navigation always keep working */
 void digictl_tick(void *ctrl)
 {
-    int k;
     (void)ctrl;
     dn_store_sync();
     if (dc_vis)
         dc_vis--;
-    if (dc_vis > 0 && dc_view) {
-        k = cur_kind(dc_view);
-        if (k == DN_FXKIND || k == DN_FEKIND)
-            DN_INVALIDATE(dc_view);
-    }
+    if (dc_vis > 0 && dc_view && *(int *)dc_view == DN_MASTER_VT)
+        DN_INVALIDATE(dc_view);
 }
 
 /* Stock convention: every parameter is 0..127, so one step is one unit. The
  * Digitone panel sends 4 wire counts per encoder detent and the stock 0..127
- * params move one step per detent (see digiemu's devices/digitone.toml), so one
- * step is 4 counts. The event delta is the accumulated wire count, clamped to
- * +/-30 by the encoder driver, so a fast turn naturally gives more steps. */
-
-/* OS-style step: one step per DC_PER_STEP accumulated counts, reset on turn */
+ * params move one step per detent, so one step is 4 counts. */
 static int dc_steps(int id, int d)
 {
     int st;
@@ -409,85 +501,66 @@ int digictl_enc(void *brain, void *ev)
     if (!master_live(dc_view))
         return 0;
     k = cur_kind(dc_view);
-
-    if (k == DN_FEKIND) {
-        if (!delta)
-            return 1;
-        d = dc_steps(id, delta);
-        if (!d)
-            return 1;
-        switch (id) {
-        case 1: digifold_on = (d > 0); break;
-        case 2: digifold_amount = clampi(digifold_amount + d, 0, 127); break;
-        case 3: digieq_low_on = (d > 0); break;
-        case 4: digieq_low_d = clampi(digieq_low_d + d, 0, 127); break;
-        case 5: digieq_high_on = (d > 0); break;
-        case 6: digieq_high_d = clampi(digieq_high_d + d, 0, 127); break;
-        case 7: digimod_dest = clampi(digimod_dest + (d > 0 ? 1 : -1), 0, 5); break;
-        case 8: digimod_voice = clampi(digimod_voice + (d > 0 ? 1 : -1), 1, 8); break;
-        case 9: digimeter_on = (d > 0); break;
-        default: break;
-        }
-        dn_store_dirty = 1;
-        DN_INVALIDATE(dc_view);
-        return 1;
-    }
-    if (k != DN_FXKIND)
+    if (k != DN_FXKIND && k != DN_FEKIND && k != DN_EQKIND)
         return 0;
     if (!delta)
         return 1;
     d = dc_steps(id, delta);
     if (!d)
         return 1;
-    switch (id) {
-    case 1: digiring_on = (d > 0); break;
-    case 2: digiring_depth = clampi(digiring_depth + d, 0, 127); break;
-    case 3: digiring_freq = clampi(digiring_freq + d, 0, 127); break;
-    case 9: digimeter_on = (d > 0); break;
-    default: break;
+
+    if (k == DN_FEKIND) {
+        switch (id) {
+        case 1: digifold_on = (d > 0); break;
+        case 4: digifold_mode = clampi(digifold_mode + d, 0, 127); break;
+        case 5: case 6: case 7: case 8:     /* E/F/G/H all edit the amount */
+            digifold_amount = clampi(digifold_amount + d, 0, 127); break;
+        case 9: digimeter_on = (d > 0); break;
+        default: break;
+        }
+    } else if (k == DN_EQKIND) {
+        switch (id) {
+        case 1: digieq_on = (d > 0); break;
+        case 5: digieq_lo = clampi(digieq_lo + d, 0, 127); break;
+        case 8: digieq_hi = clampi(digieq_hi + d, 0, 127); break;
+        default: break;
+        }
+    } else {                             /* DN_FXKIND */
+        switch (id) {
+        case 1: digiring_on = (d > 0); break;
+        case 5: digiring_depth = clampi(digiring_depth + d, 0, 127); break;
+        case 6: digiring_freq = clampi(digiring_freq + d, 0, 127); break;
+        case 9: digimeter_on = (d > 0); break;
+        default: break;
+        }
     }
     dn_store_dirty = 1;
     DN_INVALIDATE(dc_view);
     return 1;
 }
 
-/* the vector index of a page kind, or -1 */
-static int kind_index(char *view, int kind)
-{
-    int *v = *(int **)(view + 124), *e = *(int **)(view + 128), i;
-    for (i = 0; v && i < e - v; i++)
-        if (v[i] == kind)
-            return i;
-    return -1;
-}
-
-/* LEFT / RIGHT rotate our two pages (DIGI FX <-> DIGI FOLD/EQ).
- * No stock key is taken. */
+/* LEFT / RIGHT rotate the whole master page vector (stock pages included). */
 int digictl_key(void *brain, void *ev)
 {
     int id = *(int *)((char *)ev + 12);
     int flags = *(int *)((char *)ev + 16);
-    int k, i, cur = 0, idx;
+    int *v, n, idx;
     (void)brain;
     if (!master_live(dc_view))
         return 0;
     if (!(flags & 1) || (flags & 0x10) || (flags & 8))
         return 0;                               /* ignore key-repeat */
-    k = cur_kind(dc_view);
-    if (k != DN_FXKIND && k != DN_FEKIND)
+    if (id != 17 && id != 18)                   /* LEFT / RIGHT */
         return 0;
-    if (id == 17 || id == 18) {                 /* LEFT / RIGHT: rotate pages */
-        for (i = 0; i < DN_NPAGES; i++)
-            if (dc_kinds[i] == k)
-                cur = i;
-        cur = (cur + (id == 18 ? 1 : DN_NPAGES - 1)) % DN_NPAGES;
-        idx = kind_index(dc_view, dc_kinds[cur]);
-        if (idx >= 0) {
-            *(int *)(dc_view + 144) = idx;
-            DN_INVALIDATE(dc_view);
-            return 1;
-        }
+    v = *(int **)(dc_view + 124);
+    n = (int)((*(int **)(dc_view + 128)) - v);
+    if (!v || n <= 0)
         return 0;
-    }
-    return 0;
+    idx = *(int *)(dc_view + 144);
+    if (idx < 0 || idx >= n)
+        idx = 0;
+    idx = (idx + (id == 18 ? 1 : n - 1)) % n;
+    *(int *)(dc_view + 144) = idx;
+    DN_INVALIDATE(dc_view);
+    return 1;
 }

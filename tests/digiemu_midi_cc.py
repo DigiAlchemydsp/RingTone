@@ -32,8 +32,13 @@ CASES = [
     (11, 0, "digiring_on", 0),
     (36, 42, "digiring_freq", 42),
     (40, 64, "digifold_amount", 64),
-    (69, 12, "digieq_low_d", 12),
-    (96, 99, "digieq_high_d", 99),
+    (41, 80, "digifold_mode", 80),
+    (67, 127, "digieq_on", 1),
+    (67, 0, "digieq_on", 0),
+    (69, 12, "digieq_lo", 12),
+    (96, 99, "digieq_hi", 99),
+    (68, 127, "digimeter_on", 1),
+    (68, 0, "digimeter_on", 0),
 ]
 
 

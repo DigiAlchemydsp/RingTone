@@ -1,11 +1,11 @@
 {
  "id": "tonefx",
- "version": "2.3c",
+ "version": "3.0a",
  "title": "Tone+FX",
  "category": "Sound",
  "author": "Digital Alchemy DSP",
  "license": "GPL-2.0-or-later",
- "description": "The Tone+FX suite as one elemod: master ring modulator (digiring), tone-tilt EQ (digieq), wavefolder (digifold), output meter (digimeter) and the DIGI FX / DIGI FOLD-EQ master pages with all their controls (digictl). Settings are stored per pattern and the FX respond to incoming MIDI CC. It REQUIRES the core (core-dn1) and does not include it, so it combines with any other elekloader mods.",
+ "description": "The Tone+FX suite as one elemod: master ring modulator (digiring), a low-shelf/high-shelf master EQ (digieq), a wavefolder with a continuous CLEAN/MUD/DIST/TRSH fold type and an internal hard-clip overdrive on DIST/TRSH (digifold), output meter (digimeter) and the DIGI RING / DIGI FOLD / DIGI TILT master pages with all their controls (digictl). Settings are stored per pattern and the FX respond to incoming MIDI CC. It REQUIRES the core (core-dn1) and does not include it, so it combines with any other elekloader mods.",
  "device": "digitone-mk1",
  "os": "1.43",
  "sources": [
@@ -38,8 +38,9 @@
  "requires": ["core"],
  "resources": {
   "names": [
-   "ui:master page DIGI FX",
-   "ui:master FOLD / EQ",
+   "ui:master page DIGI RING",
+   "ui:master DIGI FOLD",
+   "ui:master DIGI TILT",
    "ui:master ring/AM",
    "ui:master EQ",
    "ui:master wavefolder"

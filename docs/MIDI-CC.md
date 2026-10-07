@@ -1,7 +1,7 @@
 # DIGI MIDI CC control (Digitone mk1, OS 1.43)
 
-Status: **implemented (digictl 1.9), verified in digiemu (hook path).** The
-DIGI FX / FOLD-EQ parameters respond to **incoming MIDI Control Change**
+Status: **implemented (digictl 2.0), verified in digiemu (hook path).** The
+RING / FOLD / TILT parameters respond to **incoming MIDI Control Change**
 messages, like the stock internal parameters, so they can be played and
 sequenced from an external controller/DAW.
 
@@ -38,12 +38,13 @@ lives at `0x4018D104`, 182 entries; the ones we use are listed below). The risky
 | `36`  | RING rate | 0..127 (maps internally to ~1..1906 Hz) |
 | `37`  | FOLD on/off | >=64 = ON |
 | `40`  | FOLD amount | 0..127 (`0` = bypass) |
-| `67`  | EQ LOW on/off | >=64 = ON |
-| `68`  | EQ HIGH on/off | >=64 = ON |
-| `69`  | EQ LOW gain | 0..127 (64 = flat) |
-| `96`  | EQ HIGH gain | 0..127 (64 = flat) |
+| `41`  | FOLD type | 0..127 (CLEAN/MUD/DIST/TRSH, interpolated) |
+| `67`  | EQ on/off | >=64 = ON |
+| `68`  | meter on/off | >=64 = ON |
+| `69`  | EQ low shelf | 0..127 (64 = flat) |
+| `96`  | EQ high shelf | 0..127 (64 = flat) |
 
-Not CC-controlled (page only): the meter and the parked `digimod_*` LFO bridge.
+Not CC-controlled: the parked `digimod_*` LFO bridge.
 
 Incoming CCs on **any** MIDI channel drive the (global) master FX; the values
 follow the active pattern and are saved with it.
@@ -52,7 +53,7 @@ follow the active pattern and are saved with it.
 
 `tests/digiemu_midi_cc.py` enters the **real patched site `0x400ED94E`** with a
 crafted caller frame (track=9 makes the stock router return early) and checks
-all 13 CCs plus the dirty flag. Entering the real site (not the glue directly)
+all 10 CCs plus the dirty flag. Entering the real site (not the glue directly)
 is what catches a `jsr`-vs-`jmp` stack mistake. digiemu has no MIDI input model,
 so **the raw MIDI receive path itself is validated on hardware**, not in the
 emulator.

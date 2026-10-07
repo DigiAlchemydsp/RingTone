@@ -1,11 +1,11 @@
 {
  "id": "digifold",
- "version": "1.1",
+ "version": "2.0",
  "title": "Digi Fold",
  "category": "Sound",
  "author": "Digital Alchemy DSP",
  "license": "GPL-2.0-or-later",
- "description": "A master wavefolder: a triangle fold with an on/off and an amount. Amount 0 is 1.0x (no fold); higher amounts fold the peaks harder and add harmonics. Runs after the ring and the EQ (ring -> EQ -> fold). Combines with every mod.",
+ "description": "A master wavefolder with a continuous fold type spread over four modes: CLEAN (fold only, 36% range), MUD (fold only, full range), DIST (fold at 36% + a hard-clip overdrive) and TRSH (fold at full range + the overdrive). The type is 0..127, interpolated between adjacent modes for smooth selection and capped at CLEAN/TRSH; the overdrive is a stateless gain-into-clamp. An on/off and an amount; amount 0 is 1.0x (no fold). Runs after the ring and the EQ (ring -> EQ -> fold). Combines with every mod.",
  "device": "digitone-mk1",
  "os": "1.43",
  "sources": ["fold.c"],

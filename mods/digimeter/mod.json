@@ -5,7 +5,7 @@
  "category": "Utilities",
  "author": "Digital Alchemy DSP",
  "license": "GPL-2.0-or-later",
- "description": "Output level metering for the DIGI FX master page: L/R peak-hold bars, drawn by digictl on that page (not a screen-wide overlay). Provides digimeter_l/r for the page. Combines with every mod.",
+ "description": "Output level metering for the DIGI FOLD master page: L/R peak-hold bars, drawn by digictl on that page (not a screen-wide overlay). Provides digimeter_l/r for the page. Combines with every mod.",
  "device": "digitone-mk1",
  "os": "1.43",
  "sources": ["meter.c"],

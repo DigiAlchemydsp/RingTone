@@ -1,11 +1,12 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later
- * digieq: a master tone tilt (low/high band gain) on the output.
+ * digieq: a master low-shelf / high-shelf EQ (one knob each).
  * Digitone mk1 / Keys, OS 1.43.
  *
- * A one-pole split into low and high bands, each with its own gain (Q14 delta
- * from unity). The gains are interpolated across the 32 frames of each block,
- * so a knob move (or a bypass) is a smooth ramp, not a step: no zipper, no
- * click. Bypass ramps both gains to zero, which is passthrough.
+ * A one-pole split into low and high bands, each with its own 0..127 gain
+ * (centre 64 = flat). The two gains are interpolated across the 32 frames of
+ * each block, so a knob move (or a bypass) is a smooth ramp, not a step: no
+ * zipper, no click. Bypass ramps both gains to zero, which is passthrough.
+ * The low knob bends the low shelf, the high knob the high shelf.
  * Subscriptions only: it combines with every mod.
  */
 #include "../../src/corea.h"
@@ -14,14 +15,12 @@
 #define DIGIEQ_CUT 4            /* one-pole: lo += (x-lo)>>CUT (~1 kHz) */
 #endif
 
-/* runtime parameters (exported; digictl edits them). Low and high have their
- * own enable now, so the page can switch each band independently. */
-/* 0..127, centre 64 = flat (stock convention: one step per notch). The DSP
- * scales to the Q14 gain delta: (v - 64) * 128 (v=33 -> -2.2 dB, 111 -> +2.7 dB). */
-int digieq_low_on = 1;
-int digieq_high_on = 1;
-int digieq_low_d = 33;
-int digieq_high_d = 111;
+/* runtime parameters (exported; digictl edits them).
+ * 0..127, centre 64 = flat (stock convention: one step per notch). The DSP
+ * scales each to a Q14 gain delta: (v - 64) * 128. */
+int digieq_on = 1;
+int digieq_lo = 64;
+int digieq_hi = 64;
 
 static int eq_lo_l, eq_lo_r;
 static int eq_low_cur, eq_high_cur;     /* values at the last block's start */
@@ -34,8 +33,8 @@ void digieq_render_in(void)
 
 void digieq_render_out(void)
 {
-    int lt = digieq_low_on ? (digieq_low_d - 64) * 128 : 0;   /* 0..127 -> Q14 */
-    int ht = digieq_high_on ? (digieq_high_d - 64) * 128 : 0;
+    int lt = digieq_on ? (digieq_lo - 64) * 128 : 0;   /* 0..127 -> Q14 */
+    int ht = digieq_on ? (digieq_hi - 64) * 128 : 0;
     int lstep, hstep, i, lc, hc, lo_l, lo_r;
     int *p;
     if (lt == eq_low_cur && ht == eq_high_cur && lt == 0 && ht == 0)

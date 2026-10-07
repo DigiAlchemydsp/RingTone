@@ -2,11 +2,12 @@
 """Tone+FX screenshot capture in digiemu.
 
 Renames the current pattern to TONE+FX (every pattern slot's name field, so
-whatever slot is current displays it), then captures the two FX pages on
+whatever slot is current displays it), then captures the three FX pages on
 the master page tree:
-    RING.png  -> DIGI FX (kind 0)
-    FOLD.png  -> DIGI FOLD / EQ (kind 1)
-Run against dn1-2.3c. Needs the patched-Unicorn python (the digiemu venv).
+    RING.png  -> DIGI RING (kind 0)
+    FOLD.png  -> DIGI FOLD (kind 1)
+    TILT.png  -> DIGI TILT (kind 2)
+Run against dn1-3.0a. Needs the patched-Unicorn python (the digiemu venv).
 """
 import argparse
 import os
@@ -133,23 +134,30 @@ def main():
         kinds = [struct.unpack('>I', m.peek(vec + 4 * i, 4))[0]
                  for i in range(min(nk, 16))]
         print("view %s kinds=%s" % (hex(view), kinds))
-        for want in (0, 1):
+        for want in (0, 1, 2):
             assert want in kinds, "kind %d missing" % want
 
-        # DIGI FX (kind 0)
+        # DIGI RING (kind 0)
         m.poke(view + 144, kinds.index(0).to_bytes(4, "big"))
         pc = spin(pc, a.step)
         shot("RING.png")
 
-        # RIGHT -> DIGI FOLD / EQ (kind 1)
+        # RIGHT -> DIGI FOLD (kind 1)
         pc = btn(18, True); pc = spin(pc, 4_000_000)
         pc = btn(18, False); pc = spin(pc, a.step)
         idx = struct.unpack('>I', m.peek(view + 144, 4))[0]
-        assert idx == kinds.index(1), "RIGHT did not reach DIGI FOLD/EQ (idx=%d)" % idx
+        assert idx == kinds.index(1), "RIGHT did not reach DIGI FOLD (idx=%d)" % idx
         shot("FOLD.png")
+
+        # RIGHT -> DIGI TILT (kind 2)
+        pc = btn(18, True); pc = spin(pc, 4_000_000)
+        pc = btn(18, False); pc = spin(pc, a.step)
+        idx = struct.unpack('>I', m.peek(view + 144, 4))[0]
+        assert idx == kinds.index(2), "RIGHT did not reach DIGI TILT (idx=%d)" % idx
+        shot("TILT.png")
         break
 
-    print("PASS: RING.png / FOLD.png written to", a.out)
+    print("PASS: RING.png / FOLD.png / TILT.png written to", a.out)
 
 
 if __name__ == "__main__":

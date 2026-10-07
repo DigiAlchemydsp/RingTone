@@ -1,11 +1,11 @@
 {
  "id": "digieq",
- "version": "1.1",
+ "version": "2.0",
  "title": "Digi EQ",
  "category": "Sound",
  "author": "Digital Alchemy DSP",
  "license": "GPL-2.0-or-later",
- "description": "A master tone tilt: the output split into low and high bands, each with its own 0..127 gain (centre 64 = flat, stock scale, one step per notch). A gentle upward tilt by default (low 33, high 111); the knobbed page edits both bands. Combines with every mod.",
+ "description": "A master low-shelf / high-shelf EQ with an on/off and one knob per shelf. 0..127, centre 64 = flat; the low knob bends the low shelf, the high knob the high shelf. Stock scale (one step per notch). Combines with every mod.",
  "device": "digitone-mk1",
  "os": "1.43",
  "sources": ["eq.c"],

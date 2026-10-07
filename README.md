@@ -29,10 +29,10 @@ The master chain is **ring → EQ → fold**, then the output meter:
 | mod | stage | what |
 |---|---|---|
 | `digiring` | **ring** | a sine carrier multiplies the mix — a tremolo at a low rate, a ring at an audio rate |
-| `digieq` | **EQ** | a one-pole split with low/high gains (a tone tilt) |
-| `digifold` | **fold** | a triangle wavefolder, on/off + amount |
-| `digimeter` | **meter** | L/R peak bars, drawn on the DIGI FX page |
-| `digictl` | **pages** | the DIGI FX and DIGI FOLD/EQ master pages (FUNC+LFO) that edit the three + the meter |
+| `digieq` | **EQ** | a one-pole low/high split (a low-shelf / high-shelf) |
+| `digifold` | **fold** | a triangle wavefolder with CLEAN/MUD/DIST/TRSH fold modes + an internal overdrive |
+| `digimeter` | **meter** | L/R peak bars, drawn on the DIGI FOLD page |
+| `digictl` | **pages** | the RING / FOLD / TILT master pages (FUNC+LFO) that edit the three + the meter |
 
 `digictl` requires the other four, so **install them as a set**: build with
 `core-dn1` plus all five mods.
@@ -44,28 +44,28 @@ The master chain is **ring → EQ → fold**, then the output meter:
 ## Use
 
 The pages live on the master page tree: **FUNC + LFO** cycles the master pages,
-and our two pages are appended as the fourth and fifth entries
-(DIGI FX, DIGI FOLD / EQ). **LEFT / RIGHT** rotate our two pages
-— use them if the master cycle does not reach them. PAGE keeps its stock meaning
-everywhere; no stock key or encoder is taken.
+and our three pages are appended after the stock ones. **LEFT / RIGHT** (or the
+on-screen `<` `>` arrows) rotate the whole master page list; the stock top
+status bar stays above every page. PAGE keeps its stock meaning everywhere; no
+stock key or encoder is taken.
 
-- **DIGI FX** is RING only: **A** on/off, **B** depth, **C** frequency,
-  **LEVEL** = meter. It draws a low-CPU ring animation (the marker circles at
-  the carrier rate and jitters with the depth) and shows the depth and frequency
-  amounts as vertical bars on the right border, with the output meter.
-  See [`docs/img/digi-fx-page.png`](docs/img/digi-fx-page.png).
-- **DIGI FOLD / EQ**: **A** FOLD on/off, **B** FOLD amount (a spiral that is a
-  straight line at 0 and coils as it folds), **C** EQ LOW on/off, **D** EQ LOW
-  amount, **E** EQ HIGH on/off, **F** EQ HIGH amount (faders).
-  See [`docs/img/fold-eq-page.png`](docs/img/fold-eq-page.png).
+- **RING** — **A** on/off, **E** depth, **F** frequency. A centred ring
+  animation (the marker circles at the carrier rate and jitters with the
+  depth), the depth/frequency bars on the right and the values bottom-left.
+- **FOLD** — **A** on/off, **D** fold type, **E/F/G/H** amount. The spiral (a
+  straight line at 0 that coils as it folds), the big mode title, and the
+  amount as a vertical slider next to the L/R meter.
+- **TILT** — **A** on/off, **E** low shelf, **H** high shelf. A bent low/high
+  response curve.
 
-**LEFT / RIGHT rotate the two pages** (DIGI FX ↔ DIGI FOLD/EQ).
-No stock key or encoder is taken; PAGE keeps its stock meaning.
+The **fold type** is a continuous 0–127 knob spread over four modes — CLEAN
+(36% fold), MUD (full fold), DIST (36% fold + hard-clip overdrive) and TRSH
+(full fold + overdrive) — interpolated between modes and capped at CLEAN/TRSH.
 
 Every parameter is **0–127** and moves **one step per notch**, the stock
-convention (EQ LOW/HIGH show 0–127 with 64 = flat). The
-FX also respond to **incoming MIDI CC** (a set of CC numbers the stock DN does
-not use), so they can be played/sequenced from an external controller; see
+convention (EQ LOW/HIGH show 0–127 with 64 = flat). The FX also respond to
+**incoming MIDI CC** (a set of CC numbers the stock DN does not use), so they can
+be played/sequenced from an external controller; see
 [`docs/MIDI-CC.md`](docs/MIDI-CC.md).
 
 The master effects (EQ, ring, fold) are on by default.
@@ -145,7 +145,8 @@ These are parked for later:
 ## Testing
 
 ```powershell
-python tests/digiemu_fx_screenshots.py --fw <dn1-...>               # RING / FOLD screenshots
+python tests/digiemu_fx_screenshots.py --fw <dn1-...>               # RING / FOLD / TILT screenshots
+python tests/digiemu_nav.py --fw <dn1-...>                          # LEFT/RIGHT page navigation
 python tests/digiemu_pattern_store.py --fw <dn1-...>                # per-pattern settings
 python tests/digiemu_midi_cc.py --fw <dn1-...> --map <syx.map.json> # MIDI CC hook
 ```
