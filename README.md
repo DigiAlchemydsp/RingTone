@@ -125,6 +125,23 @@ the driver's own acceleration). Remaining:
 - a **hardware audio pass** of the FX themselves;
 - small UI polish.
 
+## Parked / future work (branches + docs; NOT in the release)
+
+The release (`Tone+FX` 2.3c) is the ring / EQ / fold / meter suite + MIDI CC only.
+These are parked for later:
+
+- **Sequencer p-lock automation for the FX params** — branch `tonefx-plock`,
+  `docs/PLOCK-AUTOMATION.md` (on the branch): let the internal sequencer
+  record/play the DIGI FX params as parameter locks. Prototype works; needs the
+  active-page global (the ~1/4-page issue), then a hardware pass.
+- **Per-voice filter rewrite + digimachine** — branch `filter-and-digimachine`:
+  the Digitakt-style smoothed/fractional comb with four knobs, and the wavetable
+  machine. Not part of Tone+FX.
+- **LFO destinations** — `docs/MODULATION-AND-ROUTING.md` (parked bridge).
+- **Audio-chain reroute (pre-FX)** — same doc.
+- **Core B per-voice filter** — parked with the filter branch.
+- **FAST AUDIO on the DN** — `docs/FAST-AUDIO-DN.md`.
+
 ## Testing
 
 ```powershell
