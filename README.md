@@ -115,9 +115,10 @@ still be built and combined individually.
 
 ## Status
 
-**Work in progress.** The suite is stress-tested on real hardware (a Digitone
-mk1) and in the **digiemu** emulator (boot/settle, `dsp_running=2`; the master
-pages draw; per-pattern persistence and the MIDI-CC hook are tested). Done:
+**Work in progress.** The suite is stress-tested on real hardware over 3 days:
+**PASS** (a Digitone mk1) and in the **digiemu** emulator (boot/settle,
+`dsp_running=2`; the master pages draw; per-pattern persistence and the MIDI-CC
+hook are tested). Done:
 pattern-level save/reload, stock 0–127 controls, MIDI CC, one merged `tonefx`
 mod, and encoder steps that now match stock (one step per encoder detent, with
 the driver's own acceleration). Remaining:

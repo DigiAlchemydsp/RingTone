@@ -40,5 +40,7 @@ python -m elekloader.patch --stock $stock --mod $core `
 
 See `../DSP.md` for the DSP reference.
 
+Stress-tested on hardware over 3 days: **PASS** (a Digitone mk1).
+
 Licence: GPL-2.0-or-later. Not affiliated with Elektron. Custom firmware is at
 your own risk.

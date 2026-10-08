@@ -1,11 +1,11 @@
 {
  "id": "tonefx",
- "version": "3.0a",
+ "version": "3.0b",
  "title": "Tone+FX",
  "category": "Sound",
  "author": "Digital Alchemy DSP",
  "license": "GPL-2.0-or-later",
- "description": "The Tone+FX suite as one elemod: master ring modulator (digiring), a low-shelf/high-shelf master EQ (digieq), a wavefolder with a continuous CLEAN/MUD/DIST/TRSH fold type and an internal hard-clip overdrive on DIST/TRSH (digifold), output meter (digimeter) and the DIGI RING / DIGI FOLD / DIGI TILT master pages with all their controls (digictl). Settings are stored per pattern and the FX respond to incoming MIDI CC. It REQUIRES the core (core-dn1) and does not include it, so it combines with any other elekloader mods.",
+ "description": "The Tone+FX suite as one elemod: master ring modulator (digiring), a low-shelf/high-shelf master EQ (digieq), a wavefolder with a continuous CLEAN/MUD/DIST/TRSH fold type and an internal hard-clip overdrive on DIST/TRSH (digifold), output meter (digimeter) and the DIGI RING / DIGI FOLD / DIGI TILT master pages with all their controls (digictl), plus the TONE+FX boot splash (tonesplash: an animated wordmark drawn at the intro, one of three animations per boot). Settings are stored per pattern and the FX respond to incoming MIDI CC. It REQUIRES the core (core-dn1) and does not include it, so it combines with any other elekloader mods.",
  "device": "digitone-mk1",
  "os": "1.43",
  "sources": [
@@ -14,11 +14,22 @@
   "../digiring/ring.c",
   "../digifold/fold.c",
   "../digictl/digictl.c",
-  "../digictl/cc_glue.s"
+  "../digictl/cc_glue.s",
+  "splash.s",
+  "render.c"
  ],
  "sites": [
   {"addr": "0x40199bbc", "stock": "4004ddae", "op": "ptr", "target": "digictl_mdraw"},
-  {"addr": "0x400ED94E", "stock": "4fefffe87008", "op": "jmp", "target": "digictl_cc_disp"}
+  {"addr": "0x400ED94E", "stock": "4fefffe87008", "op": "jmp", "target": "digictl_cc_disp"},
+  {"addr": "0x40090e58", "stock": "4eb9400f8efa", "op": "jsr", "target": "tonesplash_diff"},
+  {"addr": "0x40091000", "stock": "4eb9400f8efa", "op": "jsr", "target": "tonesplash_diff"},
+  {"addr": "0x4009130a", "stock": "4eb9400f8efa", "op": "jsr", "target": "tonesplash_diff"},
+  {"addr": "0x400917bc", "stock": "4eb9400f8efa", "op": "jsr", "target": "tonesplash_diff"},
+  {"addr": "0x40091ac0", "stock": "4eb9400f8efa", "op": "jsr", "target": "tonesplash_diff"},
+  {"addr": "0x40090ff8", "stock": "4eb9400f8e7c", "op": "jsr", "target": "tonesplash_flush"},
+  {"addr": "0x40091302", "stock": "4eb9400f8e7c", "op": "jsr", "target": "tonesplash_flush"},
+  {"addr": "0x400917b4", "stock": "4eb9400f8e7c", "op": "jsr", "target": "tonesplash_flush"},
+  {"addr": "0x40091ab8", "stock": "4eb9400f8e7c", "op": "jsr", "target": "tonesplash_flush"}
  ],
  "subscribe": [
   {"event": "ev_render_in",  "fn": "digictl_mod_in",        "order": 40},
