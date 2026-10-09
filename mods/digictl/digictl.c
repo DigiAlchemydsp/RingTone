@@ -23,11 +23,11 @@
 #include "../../src/corea.h"
 #include "../../src/sin256.h"
 
-#define DN_TEXTF      ((void (*)(void *, const void *, int, int, int, const char *, ...))0x400DDE68)
-#define DN_FONT5      ((const void *)0x402315C8)
-#define DN_INVALIDATE ((void (*)(void *))0x400E512A)
-#define DN_OP_NEW     ((int *(*)(unsigned))0x400E944C)
-#define DN_STOCK_DRAW ((void (*)(void *, void *))0x4004DDAE)
+#define DN_TEXTF      ((void (*)(void *, const void *, int, int, int, const char *, ...))0x400DE0DC)
+#define DN_FONT5      ((const void *)0x402319C8)
+#define DN_INVALIDATE ((void (*)(void *))0x400E539E)
+#define DN_OP_NEW     ((int *(*)(unsigned))0x400E96C0)
+#define DN_STOCK_DRAW ((void (*)(void *, void *))0x4004DDCE)
 #define DN_FXKIND     0
 #define DN_FEKIND     1
 #define DN_EQKIND     2
@@ -36,9 +36,9 @@
 #define DG_TOP        53            /* rows 53..63 are the stock status bar */
 
 /* the stock 5-px font tables (glyph widths, bitmap offsets, bitmap bytes) */
-#define DN_FW  ((const unsigned char *)0x402315DC)
-#define DN_FO  ((const unsigned short *)0x402316DC)
-#define DN_FB  ((const unsigned char *)0x402318DC)
+#define DN_FW  ((const unsigned char *)0x402319DC)
+#define DN_FO  ((const unsigned short *)0x40231ADC)
+#define DN_FB  ((const unsigned char *)0x40231CDC)
 
 extern int digieq_on, digieq_lo, digieq_hi;
 extern int digiring_on, digiring_depth, digiring_freq;
@@ -64,7 +64,7 @@ int digimod_voice = 1;               /* 1..8 */
  * travels with the pattern. We keep our settings there (pattern + 0x1040), so
  * they follow a pattern switch / reload and survive a project save like stock
  * parameters. */
-#define DN_PAT_BASE   0x407FC414u
+#define DN_PAT_BASE   0x407FD414u
 #define DN_PAT_STRIDE 0x1611Du
 #define DN_PAT_SLOTS  128u
 #define DN_STORE_OFF  0x1040u
@@ -87,7 +87,7 @@ static int dn_store_dirty;                      /* a page edit is pending */
 
 static unsigned char *dn_store_slot(void)
 {
-    unsigned p = *(volatile unsigned *)0x4138E214u;
+    unsigned p = *(volatile unsigned *)0x4138F214u;
     if (p < DN_PAT_BASE ||
         p >= DN_PAT_BASE + (unsigned)DN_PAT_SLOTS * DN_PAT_STRIDE)
         return 0;
@@ -183,7 +183,7 @@ void digictl_cc_apply(int cc, int value)
 
 static const int dc_kinds[DN_NPAGES] = { DN_FXKIND, DN_FEKIND, DN_EQKIND };
 
-#define DN_MASTER_VT  0x40199BAC
+#define DN_MASTER_VT  0x40199EFC
 static char *dc_view;               /* the master view, from its last draw */
 static int dc_vis;                  /* frames since the master view was drawn */
 static int dc_eacc[9];              /* per-encoder accumulation, as the OS does */

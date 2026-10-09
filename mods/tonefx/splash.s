@@ -14,8 +14,8 @@
 
 tonesplash_diff:
         jsr     tonesplash_draw
-        jmp     0x400f8efa
+        jmp     0x400f916e
 
 tonesplash_flush:
         jsr     tonesplash_draw
-        jmp     0x400f8e7c
+        jmp     0x400f90f0

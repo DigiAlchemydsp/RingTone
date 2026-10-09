@@ -7,7 +7,7 @@
  "license": "GPL-2.0-or-later",
  "description": "A master low-shelf / high-shelf EQ with an on/off and one knob per shelf. 0..127, centre 64 = flat; the low knob bends the low shelf, the high knob the high shelf. Stock scale (one step per notch). Combines with every mod.",
  "device": "digitone-mk1",
- "os": "1.43",
+ "os": "1.44",
  "sources": ["eq.c"],
  "subscribe": [
   {"event": "ev_render_in",  "fn": "digieq_render_in",  "order": 50},

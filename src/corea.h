@@ -16,9 +16,9 @@
 
 /* The Digitone mk1's vline/fillRect/frameRect, Signature: (bmp,x0,y0,x1,y1,c)
  * with y = 0 the BOTTOM row. (os153.inc/dn143.inc.) */
-#define DN_VLINE     ((void (*)(void *, int, int, int, int))0x400DC92C)
-#define DN_FILLRECT  ((void (*)(void *, int, int, int, int, int))0x400DD292)
-#define DN_FRAMERECT ((void (*)(void *, int, int, int, int, int))0x400DD076)
+#define DN_VLINE     ((void (*)(void *, int, int, int, int))0x400DCBA0)
+#define DN_FILLRECT  ((void (*)(void *, int, int, int, int, int))0x400DD506)
+#define DN_FRAMERECT ((void (*)(void *, int, int, int, int, int))0x400DD2EA)
 
 #define DN_DMA_CH54_SADDR (*(volatile unsigned *)0xFC0456C0u)
 

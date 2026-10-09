@@ -7,11 +7,11 @@
  "license": "GPL-2.0-or-later",
  "description": "The DIGI RING, DIGI FOLD and DIGI TILT pages on the master page tree (FUNC+LFO), rotated with LEFT/RIGHT or the on-screen < > arrows. The stock top status bar is kept. RING: on/off (A), depth (E), frequency (F). FOLD: on/off (A), fold type CLEAN/MUD/DIST/TRSH (D), amount (E/F/G/H all edit it), with the spiral, the big mode title, the amount slider and the level meter. TILT: on/off (A), low shelf (E), high shelf (H). Stock one-step-per-detent rate with acceleration (OS-style accumulation). Settings are stored per pattern inside the saved pattern data (they follow pattern switch / reload and a project save, like stock parameters). It drives digieq / digiring / digifold / digimeter (all required).",
  "device": "digitone-mk1",
- "os": "1.43",
+ "os": "1.44",
  "sources": ["digictl.c", "cc_glue.s"],
  "sites": [
-  {"addr": "0x40199bbc", "stock": "4004ddae", "op": "ptr", "target": "digictl_mdraw"},
-  {"addr": "0x400ED94E", "stock": "4fefffe87008", "op": "jmp", "target": "digictl_cc_disp"}
+  {"addr": "0x40199f0c", "stock": "4004ddce", "op": "ptr", "target": "digictl_mdraw"},
+  {"addr": "0x400EDBC2", "stock": "4fefffe87008", "op": "jmp", "target": "digictl_cc_disp"}
  ],
  "subscribe": [
   {"event": "ev_tick",      "fn": "digictl_tick",  "order": 40},

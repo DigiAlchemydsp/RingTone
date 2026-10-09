@@ -7,7 +7,7 @@
  "license": "GPL-2.0-or-later",
  "description": "Output level metering for the DIGI FOLD master page: L/R peak-hold bars, drawn by digictl on that page (not a screen-wide overlay). Provides digimeter_l/r for the page. Combines with every mod.",
  "device": "digitone-mk1",
- "os": "1.43",
+ "os": "1.44",
  "sources": ["meter.c"],
  "subscribe": [
   {"event": "ev_render_in",  "fn": "digimeter_render_in",  "order": 50},
