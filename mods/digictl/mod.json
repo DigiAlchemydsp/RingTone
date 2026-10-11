@@ -19,6 +19,6 @@
   {"event": "ev_key",       "fn": "digictl_key",   "order": 40},
   {"event": "ev_render_in", "fn": "digictl_mod_in","order": 40}
  ],
- "requires": ["core", "digieq", "digiring", "digifold", "digimeter"],
+ "requires": ["core", "digieq", "digiring", "digifold", "digimeter", "digicrush", "digiwave"],
  "resources": {"names": ["ui:master page DIGI RING"]}
 }

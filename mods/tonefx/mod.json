@@ -1,11 +1,11 @@
 {
  "id": "tonefx",
- "version": "3.0b",
+ "version": "3.1c",
  "title": "Tone+FX",
  "category": "Sound",
  "author": "Digital Alchemy DSP",
  "license": "GPL-2.0-or-later",
- "description": "The Tone+FX suite as one elemod: master ring modulator (digiring), a low-shelf/high-shelf master EQ (digieq), a wavefolder with a continuous CLEAN/MUD/DIST/TRSH fold type and an internal hard-clip overdrive on DIST/TRSH (digifold), output meter (digimeter) and the DIGI RING / DIGI FOLD / DIGI TILT master pages with all their controls (digictl), plus the TONE+FX boot splash (tonesplash: an animated wordmark drawn at the intro, one of three animations per boot). Settings are stored per pattern and the FX respond to incoming MIDI CC. It REQUIRES the core (core-dn1) and does not include it, so it combines with any other elekloader mods.",
+ "description": "The Tone+FX suite as one elemod: master ring modulator (digiring), a low-shelf/high-shelf master EQ (digieq), a wavefolder with a continuous CLEAN/MUD/DIST/TRSH fold type and an internal hard-clip overdrive on DIST/TRSH (digifold), a Crunch/Redux lo-fi stage (digicrush), a five-mode modulation insert WOB/SHFT/FLAN/PAN/WIDE (digiwave), output meter (digimeter) and the DIGI RING / DIGI FOLD / DIGI TILT / DIGI CRUSH / DIGI WAVE master pages with all their controls (digictl), plus the TONE+FX boot splash (tonesplash: an animated wordmark drawn at the intro, one of three animations per boot). Settings are stored per pattern and the FX respond to incoming MIDI CC. It REQUIRES the core (core-dn1) and does not include it, so it combines with any other elekloader mods.",
  "device": "digitone-mk1",
  "os": "1.43",
  "sources": [
@@ -13,6 +13,8 @@
   "../digieq/eq.c",
   "../digiring/ring.c",
   "../digifold/fold.c",
+  "../digicrush/crush.c",
+  "../digiwave/wave.c",
   "../digictl/digictl.c",
   "../digictl/cc_glue.s",
   "splash.s",
@@ -37,10 +39,14 @@
   {"event": "ev_render_in",  "fn": "digieq_render_in",      "order": 50},
   {"event": "ev_render_in",  "fn": "digifold_render_in",    "order": 50},
   {"event": "ev_render_in",  "fn": "digimeter_render_in",   "order": 50},
-  {"event": "ev_render_out", "fn": "digiring_render_out",   "order": 50},
-  {"event": "ev_render_out", "fn": "digieq_render_out",     "order": 55},
-  {"event": "ev_render_out", "fn": "digifold_render_out",   "order": 60},
-  {"event": "ev_render_out", "fn": "digimeter_render_out",  "order": 65},
+  {"event": "ev_render_in",  "fn": "digicrush_render_in",   "order": 50},
+  {"event": "ev_render_in",  "fn": "digiwave_render_in",    "order": 50},
+  {"event": "ev_render_out", "fn": "digiring_render_out",    "order": 50},
+  {"event": "ev_render_out", "fn": "digieq_render_out",      "order": 55},
+  {"event": "ev_render_out", "fn": "digicrush_render_out",   "order": 57},
+  {"event": "ev_render_out", "fn": "digifold_render_out",    "order": 60},
+  {"event": "ev_render_out", "fn": "digiwave_render_out",    "order": 62},
+  {"event": "ev_render_out", "fn": "digimeter_render_out",   "order": 65},
   {"event": "ev_tick",       "fn": "digictl_tick",          "order": 40},
   {"event": "ev_tick",       "fn": "digimeter_tick",        "order": 60},
   {"event": "ev_enc",        "fn": "digictl_enc",           "order": 40},
@@ -54,7 +60,9 @@
    "ui:master DIGI TILT",
    "ui:master ring/AM",
    "ui:master EQ",
-   "ui:master wavefolder"
+   "ui:master wavefolder",
+   "ui:master DIGI CRUSH",
+   "ui:master DIGI WAVE"
   ]
  }
 }

@@ -1,11 +1,13 @@
 # tonefx — the Tone+FX suite as one elemod
 
-This mod is a **merge** of the five suite mods:
+This mod is a **merge** of the suite mods:
 
 - `../digimeter/meter.c`
 - `../digieq/eq.c`
 - `../digiring/ring.c`
 - `../digifold/fold.c`
+- `../digicrush/crush.c`   (Crunch / Redux: BITS / SR / CRUNCH)
+- `../digiwave/wave.c`     (WOB / SHFT / FLAN / PAN / WIDE modulation)
 - `../digictl/` (`digictl.c`, `cc_glue.s`)
 
 `mod.json` pulls in all their sources, sites and subscriptions and declares
