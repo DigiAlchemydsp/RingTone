@@ -9,7 +9,7 @@
 > [github.com/DigiAlchemydsp/Tone-FX/releases](https://github.com/DigiAlchemydsp/Tone-FX/releases).**
 > This repo is kept for reference until it is merged/deprecated.
 
-![The DIGI FX page on the Digitone mk1](docs/img/digi-fx-page.png)
+![The RING page on the Digitone mk1](docs/img/ui-ring.png)
 
 Unofficial, community-made [elekloader](https://github.com/irpina/elekloader)
 mods for the **Elektron Digitone mk1 / Digitone Keys, OS 1.43**.
@@ -59,6 +59,15 @@ stock key or encoder is taken.
   amount as a vertical slider next to the L/R meter.
 - **TILT** — **A** on/off, **E** low shelf, **H** high shelf. A bent low/high
   response curve.
+- **CRUSH** — **A** on/off, **D** mode (BITS/SR/CRUNCH), **E** amount, **F** tune.
+  A scrolling waveform in the left third that collapses to a line at 0 and is
+  quantised / held / clipped by the mode; the big mode title sits right.
+- **PITCH** — **A** on/off, **D** mode (WOB/SHFT), **E** speed, **F** depth.
+  Two vertical lines run top to bottom; they wobble and intertwine at more nodes
+  as depth/speed rise.
+- **STEREO** — **A** on/off, **D** mode (FLAN/PAN/WIDE), **E** speed, **F** depth,
+  **G** mix, **H** feedback. A horizontal line that ripples (FLAN), splits into
+  two moving apart (PAN) or spreads (WIDE).
 
 The **fold type** is a continuous 0–127 knob spread over four modes — CLEAN
 (36% fold), MUD (full fold), DIST (36% fold + hard-clip overdrive) and TRSH
@@ -71,6 +80,45 @@ be played/sequenced from an external controller; see
 [`docs/MIDI-CC.md`](docs/MIDI-CC.md).
 
 The master effects (EQ, ring, fold) are on by default.
+
+## Pages
+
+Six master pages (**FUNC + LFO**; **LEFT/RIGHT** rotates). Each new page has a
+frameless animated graphic in the leftmost third that collapses to a line when
+the effect is at neutral.
+
+| RING | FOLD | TILT |
+|---|---|---|
+| ![RING](docs/img/ui-ring.png) | ![FOLD](docs/img/ui-fold.png) | ![TILT](docs/img/ui-tilt.png) |
+
+| CRUSH | PITCH | STEREO |
+|---|---|---|
+| ![CRUSH](docs/img/ui-crush.png) | ![PITCH](docs/img/ui-pitch.png) | ![STEREO](docs/img/ui-stereo.png) |
+
+## CPU footprint
+
+Everything runs on the Digitone's **main CPU (Core A)**; the FM DSP (Core B) is
+untouched. Approximate instructions per active stereo frame (32 frames/block,
+1500 blocks/s); a bypassed section costs ~0. Cheapest → heaviest:
+
+| # | block / mode | ≈ insn/frame |
+|---|---|---|
+| 1 | `digicrush` — BITS | ~10 |
+| 2 | `digicrush` — SR | ~12 |
+| 3 | `digimeter` | ~15 |
+| 4 | `digiwave` — WIDE | ~18 |
+| 5 | `digifold` — CLEAN/MUD | ~20 |
+| 6 | `digiwave` — PAN | ~24 |
+| 7 | `digicrush` — CRUNCH | ~25 |
+| 8 | `digiring` | ~28 |
+| 9 | `digieq` | ~30 |
+| 10 | `digifold` — DIST/TRSH | ~35 |
+| 11 | `digiwave` — WOB | ~45 |
+| 12 | `digiwave` — FLAN | ~55 |
+| 13 | `digiwave` — SHFT | ~75 |
+
+Turn off the pages you are not using; each true-bypasses. Full ledger in
+[`docs/OPTIMIZATION.md`](docs/OPTIMIZATION.md).
 
 ## Layout
 

@@ -68,7 +68,7 @@ follow the active pattern and are saved with it.
 
 `tests/digiemu_midi_cc.py` enters the **real patched site `0x400ED94E`** with a
 crafted caller frame (track=9 makes the stock router return early) and checks
-the CC list plus the dirty flag (extend `CASES` with 20–29). Entering the real site (not the glue directly)
+the CC list plus the dirty flag (extend `CASES` with 20–31). Entering the real site (not the glue directly)
 is what catches a `jsr`-vs-`jmp` stack mistake. digiemu has no MIDI input model,
 so **the raw MIDI receive path itself is validated on hardware**, not in the
 emulator.
