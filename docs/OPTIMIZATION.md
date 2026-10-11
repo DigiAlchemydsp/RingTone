@@ -5,7 +5,7 @@ optimization methods used (and why), what is repurposed from the stock OS and
 from RingTone, and the RAM / flash / headroom ledger. This is the technical
 companion to `HANDOFF.md`; `DSP.md` is the address/architecture reference.
 
-Current package: `tonefx 3.1d` (`.run 18820`, `.bss 25222`).
+Current package: `tonefx 3.1e` (`.run 18804`, `.bss 25234`).
 
 ## 1. Where the code runs
 
@@ -108,15 +108,19 @@ Ordered roughly by how much they bought.
 12. **Shared infrastructure / one engine, two WAVE pages.** One per-pattern
     store, one CC router `jmp`, one page factory and one invalidate path serve
     all modules. `digiwave`'s five modes are split over **two pages** — kind 4
-    PITCH (WOB / SHFT) and kind 5 STEREO (FLAN / PAN / WIDE) — that edit one
-    shared engine; the D encoder cycles only within the shown page's group, so
-    the shared `digiwave_mode` is always reachable from the page in use.
+    PITCH (WOB / SHFT) and kind 5 STEREO (FLAN / PAN / WIDE) — over one shared
+    delay engine. Each page has its **own mode** (`digiwave_pmode`,
+    `digiwave_smode`) so a page only ever shows and selects its own modes, plus
+    an active-group flag (`digiwave_page`) set when a page is edited, which
+    decides which mode the engine runs. Speed/depth are shared; mix/feedback are
+    STEREO (FLAN). Feedback is capped at **0.75** (`fb = fb_knob*24575/127`) to
+    keep the flanger from self-oscillating into distortion.
 13. **Per-mod compiler flags (A/B, measured).** `mod.json` accepts `cflags`,
     appended after the device `-O2` (`elekloader/sdk/build.py:125`):
 
     | flags | `.run` | `.bss` | note |
     |---|---|---|---|
-    | `-O2` (default) | 18820 | 25222 | imports nothing |
+    | `-O2` (default) | 18804 | 25234 | imports nothing |
     | `-O3 -funroll-loops` | 35112 | 25230 | **imports `memset`** (loop distribution) — unusable |
     | `-O3 -fno-tree-loop-distribute-patterns` | 24152 | 25230 | +28 % code, imports nothing |
 
@@ -157,8 +161,8 @@ Ordered roughly by how much they bought.
 
 | item | value |
 |---|---|
-| `.run` (code + rodata) | 18,820 B |
-| `.bss` (RAM state) | 25,222 B |
+| `.run` (code + rodata) | 18,804 B |
+| `.bss` (RAM state) | 25,234 B |
 | — of which `digiwave` delay line | 2048 × 2 × 4 = 16,384 B (+8 guard) |
 | — of which tables (`sin256`, `wv_ratio`, `wv_win`) | ~1,024 + 512 + 512 B (`.run`) |
 | **RAM spare** | **~86 KB of 128 KB** |

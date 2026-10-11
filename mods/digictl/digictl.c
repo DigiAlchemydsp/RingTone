@@ -52,8 +52,8 @@ extern int digiring_on, digiring_depth, digiring_freq;
 extern int digifold_on, digifold_amount, digifold_mode;
 extern int digimeter_on, digimeter_l, digimeter_r;
 extern int digicrush_on, digicrush_mode, digicrush_amount, digicrush_tune;
-extern int digiwave_on, digiwave_mode, digiwave_speed, digiwave_depth;
-extern int digiwave_mix, digiwave_fb;
+extern int digiwave_on, digiwave_pmode, digiwave_smode, digiwave_page;
+extern int digiwave_speed, digiwave_depth, digiwave_mix, digiwave_fb;
 
 /* Track-LFO bridge. A track LFO can target the track's FLTR FREQ; that live
  * value is in the per-voice record at 0x80003544 + (voice-1)*0x9E, FREQ at +0
@@ -78,8 +78,8 @@ int digimod_voice = 1;               /* 1..8 */
 #define DN_PAT_STRIDE 0x1611Du
 #define DN_PAT_SLOTS  128u
 #define DN_STORE_OFF  0x1040u
-#define DN_STORE_N    22
-#define DN_STORE_VER  6
+#define DN_STORE_N    24
+#define DN_STORE_VER  7
 #define DN_STORE_MAG(a) ((a)[0] == 0x44 && (a)[1] == 0x47 && \
                          (a)[2] == 0x58 && (a)[3] == 0x31 && \
                          (a)[5] == DN_STORE_VER)               /* "DGX1" v6 */
@@ -90,8 +90,8 @@ static int *const dn_fxparam[DN_STORE_N] = {
     &digifold_on, &digifold_amount, &digifold_mode,
     &digimeter_on, &digimod_dest, &digimod_voice,
     &digicrush_on, &digicrush_mode, &digicrush_amount, &digicrush_tune,
-    &digiwave_on, &digiwave_mode, &digiwave_speed, &digiwave_depth,
-    &digiwave_mix, &digiwave_fb,
+    &digiwave_on, &digiwave_pmode, &digiwave_smode, &digiwave_page,
+    &digiwave_speed, &digiwave_depth, &digiwave_mix, &digiwave_fb,
 };
 
 static unsigned char *dn_store_blk;             /* block we last synced */
@@ -179,7 +179,9 @@ static int clampi(int v, int lo, int hi);
 #define DN_CC_CRU_AMT    22
 #define DN_CC_CRU_TUNE   23
 #define DN_CC_WV_ON      24
-#define DN_CC_WV_MODE    25
+#define DN_CC_WV_PMODE  25
+#define DN_CC_WV_SMODE  30
+#define DN_CC_WV_PAGE   31
 #define DN_CC_WV_SPD     26
 #define DN_CC_WV_DEP     27
 #define DN_CC_WV_MIX     28
@@ -204,7 +206,9 @@ void digictl_cc_apply(int cc, int value)
     case DN_CC_CRU_AMT:    digicrush_amount = v; break;
     case DN_CC_CRU_TUNE:   digicrush_tune = v; break;
     case DN_CC_WV_ON:      digiwave_on = (v >= 64); break;
-    case DN_CC_WV_MODE:    digiwave_mode = v; break;
+    case DN_CC_WV_PMODE:   digiwave_pmode = v; digiwave_page = 0; break;
+    case DN_CC_WV_SMODE:   digiwave_smode = v; digiwave_page = 1; break;
+    case DN_CC_WV_PAGE:    digiwave_page = (v >= 64); break;
     case DN_CC_WV_SPD:     digiwave_speed = v; break;
     case DN_CC_WV_DEP:     digiwave_depth = v; break;
     case DN_CC_WV_MIX:     digiwave_mix = v; break;
@@ -510,23 +514,22 @@ static void dg_crush_page(void *bmp)
  * kind 4 PITCH (WOB / SHFT), kind 5 STEREO (FLAN / PAN / WIDE). Both edit the
  * same digiwave_mode; the D encoder cycles within the page's group, so a page
  * only selects its own modes. The big title shows the engine's current mode. */
-static int dg_wbucket(void)
+static const char *dg_pname(void)          /* PITCH page's own mode */
 {
-    int b = (digiwave_mode * 5) >> 7;
-    return b > 4 ? 4 : b;
+    static const char *const n[2] = { "WOB", "SHFT" };
+    int b = (digiwave_pmode * 2) >> 7;
+    return n[b > 1 ? 1 : b];
 }
 
-static const char *dg_wname(int b)
+static const char *dg_sname(void)          /* STEREO page's own mode */
 {
-    static const char *const n[5] = { "WOB", "SHFT", "FLAN", "PAN", "WIDE" };
-    if (b < 0) b = 0;
-    if (b > 4) b = 4;
-    return n[b];
+    static const char *const n[3] = { "FLAN", "PAN", "WIDE" };
+    int b = (digiwave_smode * 3) >> 7;
+    return n[b > 2 ? 2 : b];
 }
 
-static void dg_wave_bars(void *bmp, const char *title, int show_mix)
+static void dg_wave_bars(void *bmp, const char *m, const char *title, int show_mix)
 {
-    const char *m = dg_wname(dg_wbucket());
     DN_FILLRECT(bmp, 0, 0, 127, DG_TOP - 1, 0);
     dg_arrows(bmp);
     dg_text(bmp, (128 - dg_strw(m, 2)) / 2, 36, m, 2);
@@ -539,8 +542,8 @@ static void dg_wave_bars(void *bmp, const char *title, int show_mix)
     dg_title(bmp, title);
 }
 
-static void dg_wave_page(void *bmp)  { dg_wave_bars(bmp, "PITCH", 0); }
-static void dg_wave2_page(void *bmp) { dg_wave_bars(bmp, "STEREO", 1); }
+static void dg_wave_page(void *bmp)  { dg_wave_bars(bmp, dg_pname(), "PITCH", 0); }
+static void dg_wave2_page(void *bmp) { dg_wave_bars(bmp, dg_sname(), "STEREO", 1); }
 
 /* vtable slot 4 of the master view: draw */
 void digictl_mdraw(void *view, void *bmp)
@@ -633,17 +636,29 @@ int digictl_enc(void *brain, void *ev)
         case 6: digicrush_tune = clampi(digicrush_tune + d, 0, 127); break;
         default: break;
         }
-    } else if (k == DN_WVKIND || k == DN_WSKIND) {
+    } else if (k == DN_WVKIND) {             /* PITCH: WOB / SHFT */
+        digiwave_page = 0;                   /* editing this page activates it */
         switch (id) {
         case 1: digiwave_on = (d > 0); break;
-        case 4: {                        /* D: cycle within the page's group */
-            int lo = (k == DN_WVKIND) ? 0 : 2;
-            int hi = (k == DN_WVKIND) ? 1 : 4;
-            int b = dg_wbucket();
-            if (b < lo) b = lo;
-            if (b > hi) b = hi;
-            b = clampi(b + d, lo, hi);
-            digiwave_mode = b * 25 + 12;            /* a value in bucket b */
+        case 4: {
+            int b = (digiwave_pmode * 2) >> 7;
+            if (b > 1) b = 1;
+            b = clampi(b + d, 0, 1);
+            digiwave_pmode = b * 64 + 32;
+        } break;
+        case 5: digiwave_speed = clampi(digiwave_speed + d, 0, 127); break;
+        case 6: digiwave_depth = clampi(digiwave_depth + d, 0, 127); break;
+        default: break;
+        }
+    } else if (k == DN_WSKIND) {             /* STEREO: FLAN / PAN / WIDE */
+        digiwave_page = 1;
+        switch (id) {
+        case 1: digiwave_on = (d > 0); break;
+        case 4: {
+            int b = (digiwave_smode * 3) >> 7;
+            if (b > 2) b = 2;
+            b = clampi(b + d, 0, 2);
+            digiwave_smode = b * 43 + 21;
         } break;
         case 5: digiwave_speed = clampi(digiwave_speed + d, 0, 127); break;
         case 6: digiwave_depth = clampi(digiwave_depth + d, 0, 127); break;

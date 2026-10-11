@@ -32,9 +32,9 @@ The master chain is **ring → EQ → crush → fold → wave → meter**:
 | `digieq` | **EQ** | a one-pole low/high split (a low-shelf / high-shelf) |
 | `digicrush` | **crush** | Crunch / Redux: bit-reduce (BITS), sample-rate hold (SR) or a hard-clip drive (CRUNCH) |
 | `digifold` | **fold** | a triangle wavefolder with CLEAN/MUD/DIST/TRSH fold modes + an internal overdrive |
-| `digiwave` | **wave** | one modulation insert, five modes: WOB (pitch wobble), SHFT (pitch shift), FLAN (flanger), PAN (autopan), WIDE (stereo width) |
+| `digiwave` | **wave** | one modulation engine, two pages: **PITCH** (WOB wobble, SHFT shift) and **STEREO** (FLAN flanger, PAN autopan, WIDE width) |
 | `digimeter` | **meter** | L/R peak bars, drawn on the DIGI FOLD page |
-| `digictl` | **pages** | the RING / FOLD / TILT / CRUSH / WAVE master pages (FUNC+LFO) that edit the FX |
+| `digictl` | **pages** | the RING / FOLD / TILT / CRUSH / PITCH / STEREO master pages (FUNC+LFO) that edit the FX |
 
 `digictl` requires the FX mods, so **install them as a set**: build with
 `core-dn1` plus all the suite mods.

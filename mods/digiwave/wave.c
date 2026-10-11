@@ -20,11 +20,13 @@
 
 /* runtime parameters (exported; digictl edits them). 0..127, one step/notch. */
 int digiwave_on = 0;
-int digiwave_mode = 0;          /* 0..127 -> WOB / SHFT / FLAN / PAN / WIDE */
+int digiwave_pmode = 0;         /* PITCH page: 0..127 -> WOB / SHFT */
+int digiwave_smode = 0;         /* STEREO page: 0..127 -> FLAN / PAN / WIDE */
+int digiwave_page = 0;          /* active group: 0 PITCH, 1 STEREO */
 int digiwave_speed = 40;        /* LFO rate */
 int digiwave_depth = 64;        /* wobble/sweep/pan depth, semitones, or width */
-int digiwave_mix = 64;          /* wet mix (SHFT/FLAN) */
-int digiwave_fb = 0;            /* flanger feedback */
+int digiwave_mix = 64;          /* wet mix (FLAN) */
+int digiwave_fb = 0;            /* flanger feedback (capped at 75%) */
 
 #define WV_WOB 0
 #define WV_SHF 1
@@ -139,9 +141,13 @@ void digiwave_render_out(void)
         wv_fla_mix = 0;
         return;
     }
-    mode = (digiwave_mode * 5) >> 7;
-    if (mode > WV_WID)
-        mode = WV_WID;
+    if (digiwave_page) {                        /* STEREO group */
+        int b = 2 + ((digiwave_smode * 3) >> 7);
+        mode = b > WV_WID ? WV_WID : b;
+    } else {                                    /* PITCH group */
+        int b = (digiwave_pmode * 2) >> 7;
+        mode = b > 1 ? 1 : b;
+    }
 
     if (mode == WV_SHF && depth == 64)
         return;
@@ -159,7 +165,7 @@ void digiwave_render_out(void)
         unsigned hz = 1u + (((unsigned)(digiwave_speed * 12)) >> 7);
         unsigned inc = hz * WV_K * DN_OUT_FRAMES;       /* per block */
         int mix = digiwave_mix * 258;                   /* Q15 */
-        int fb = digiwave_fb * 258;                     /* Q15 */
+        int fb = (digiwave_fb * 24575) / 127;           /* Q15, capped at 0.75 */
         unsigned ph = wv_phase;
         int l0 = wv_sin(ph);                            /* block-rate LFO: */
         int lstep = (wv_sin(ph + inc) - l0) >> 5;       /* linear ramp      */

@@ -48,13 +48,15 @@ lives at `0x4018D104`, 182 entries; the ones we use are listed below). The risky
 | `22`  | CRUSH amount | 0..127 (`0` = bypass) |
 | `23`  | CRUSH tune | 0..127 (dither / extra SR ratio) |
 | `24`  | WAVE on/off | >=64 = ON |
-| `25`  | WAVE mode | 0..127 (WOB / SHFT / FLAN / PAN / WIDE) |
+| `25`  | PITCH mode | 0..127 (WOB / SHFT) — also activates the PITCH page |
 | `26`  | WAVE speed | 0..127 (LFO rate) |
 | `27`  | WAVE depth | 0..127 (depth / semitones / width) |
 | `28`  | WAVE mix | 0..127 (flanger dry/wet) |
-| `29`  | WAVE fb | 0..127 (flanger feedback) |
+| `29`  | WAVE fb | 0..127 (flanger feedback; scaled to 0..0.75 max) |
+| `30`  | STEREO mode | 0..127 (FLAN / PAN / WIDE) — also activates STEREO |
+| `31`  | WAVE group | >=64 = STEREO active, else PITCH |
 
-**CC 20–29 are not yet checked against the stock CC table** (`0x4018D104`,
+**CC 20–31 are not yet checked against the stock CC table** (`0x4018D104`,
 182 entries) — confirm they are free before sequencing WAVE/CRUSH from a DAW.
 
 Not CC-controlled: the parked `digimod_*` LFO bridge.
