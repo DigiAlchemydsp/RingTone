@@ -22,3 +22,4 @@ __pycache__/
 # OS cruft
 Thumbs.db
 desktop.ini
+testout/
