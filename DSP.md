@@ -210,9 +210,16 @@ or a bus (`0x8000EC70…`) instead of the final output.
 - `mods/digiring` — 256-entry Q15 sine ring/AM, depth/freq interpolated.
 - `mods/digifold` — triangle wavefolder (gain, then reflect into `[-T,T]`),
   amount 0 = 1.0x (bypass).
+- `mods/digicrush` — Crunch/Redux: masked bit-reduce (+TPDF dither), a
+  sample-hold decimator, or a Q8 gain-into-clip; one stage per block.
+- `mods/digiwave` — one modulation insert, five modes (WOB/ SHFT/ FLAN/ PAN/
+  WIDE) over one 16 KB shared delay line and one `sin256` LFO. WOB/FLAN use a
+  **fractional, clamped, interpolated** delay (a swept delay must never step by
+  a whole sample or wrap negative); SHFT is two crossfaded grains read at a
+  ratio, with the read position shared by L/R and the window derived.
 
 The master chain order is set by the `ev_render_out` orders:
-**ring (50) → EQ (55) → fold (60)**.
+**ring (50) → EQ (55) → crush (57) → fold (60) → wave (62) → meter (65)**.
 
 ---
 

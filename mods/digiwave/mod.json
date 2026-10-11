@@ -1,0 +1,18 @@
+{
+ "id": "digiwave",
+ "version": "1.0",
+ "title": "Digi Wave",
+ "category": "Sound",
+ "author": "Digital Alchemy DSP",
+ "license": "GPL-2.0-or-later",
+ "description": "One modulation master insert with five modes and one set of controls: WOB (pitch wobble/vibrato), SHFT (pitch shift), FLAN (flanger), PAN (autopan) and WIDE (stereo width). One sine LFO and one shared delay line serve the delay modes. Subscriptions only; combines with every mod.",
+ "device": "digitone-mk1",
+ "os": "1.43",
+ "sources": ["wave.c"],
+ "subscribe": [
+  {"event": "ev_render_in",  "fn": "digiwave_render_in",  "order": 50},
+  {"event": "ev_render_out", "fn": "digiwave_render_out", "order": 62}
+ ],
+ "requires": ["core"],
+ "resources": {"names": ["ui:master DIGI WAVE"]}
+}

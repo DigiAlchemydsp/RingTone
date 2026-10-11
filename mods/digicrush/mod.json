@@ -1,0 +1,18 @@
+{
+ "id": "digicrush",
+ "version": "1.0",
+ "title": "Digi Crunch",
+ "category": "Sound",
+ "author": "Digital Alchemy DSP",
+ "license": "GPL-2.0-or-later",
+ "description": "Master Crunch / Redux lo-fi insert: bit-reduce (BITS), sample-rate hold (SR) and a hard-clip drive (CRUNCH), one stateless stage at a time, on the master mix. Subscriptions only; combines with every mod.",
+ "device": "digitone-mk1",
+ "os": "1.43",
+ "sources": ["crush.c"],
+ "subscribe": [
+  {"event": "ev_render_in",  "fn": "digicrush_render_in",  "order": 50},
+  {"event": "ev_render_out", "fn": "digicrush_render_out", "order": 57}
+ ],
+ "requires": ["core"],
+ "resources": {"names": ["ui:master DIGI CRUSH"]}
+}

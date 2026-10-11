@@ -1,0 +1,295 @@
+/* SPDX-License-Identifier: GPL-2.0-or-later
+ * digiwave: one modulation insert, five modes, one set of controls.
+ * Digitone mk1 / Keys, OS 1.43.
+ *
+ *   WOB   vibrato: a sine-modulated, interpolated short delay (pitch wobble)
+ *   SHFT  pitch shifter: two crossfaded grains read at a ratio (transpose)
+ *   FLAN  flanger: a modulated, interpolated short delay + feedback + mix
+ *   PAN   autopan: a sine pan-law (no delay)
+ *   WIDE  stereo width: mid/side (no LFO)
+ *
+ * One sine LFO (sin256), ramped at block rate (one sine per block, then a
+ * linear step -- no per-sample sine), and one shared delay line serve
+ * WOB/SHFT/FLAN. The delay is fractional (linear interpolation) and clamped
+ * positive, so a swept delay is click-free. All integer, no 64-bit multiply.
+ * ev_render_in remembers the output half; ev_render_out processes in place.
+ * Subscriptions only: it combines with every mod.
+ */
+#include "../../src/corea.h"
+#include "../../src/sin256.h"
+
+/* runtime parameters (exported; digictl edits them). 0..127, one step/notch. */
+int digiwave_on = 0;
+int digiwave_mode = 0;          /* 0..127 -> WOB / SHFT / FLAN / PAN / WIDE */
+int digiwave_speed = 40;        /* LFO rate */
+int digiwave_depth = 64;        /* wobble/sweep/pan depth, semitones, or width */
+int digiwave_mix = 64;          /* wet mix (SHFT/FLAN) */
+int digiwave_fb = 0;            /* flanger feedback */
+
+#define WV_WOB 0
+#define WV_SHF 1
+#define WV_FLA 2
+#define WV_PAN 3
+#define WV_WID 4
+
+#define WV_N     2048
+#define WV_MASK  (WV_N - 1)
+#define WV_GRAIN 512            /* SHFT grain length, samples (~10.7 ms) */
+#define WV_LEAD  256            /* SHFT restart delay */
+
+#define WV_K 89478              /* 2^32 / 48000: Hz -> Q32 phase inc */
+
+static volatile unsigned wv_off;
+
+/* +1 guard sample mirrors index 0, so a read at idx+1 never needs a mask */
+static int wv_buf[2][WV_N + 1];
+static unsigned wv_w;           /* write index */
+static unsigned wv_phase;       /* LFO phase, Q32 */
+
+/* ramped (de-zipper) state, Q15 */
+static int wv_wob_wet;
+static int wv_fla_mix;
+
+/* SHFT grain state */
+static unsigned wv_gpos[2];     /* read position, Q16.16 */
+static int wv_age[2];
+static int wv_primed;
+
+/* ratio: depth 0..127 -> 2^(semitones/12), semitones -12..+12, Q16.16 */
+static const int wv_ratio[128] = {
+    32768, 33125, 33486, 33850, 34219, 34591, 34968, 35349,
+    35734, 36123, 36516, 36914, 37316, 37722, 38133, 38548,
+    38968, 39392, 39821, 40255, 40693, 41136, 41584, 42037,
+    42495, 42958, 43425, 43898, 44376, 44859, 45348, 45842,
+    46341, 46846, 47356, 47871, 48393, 48920, 49452, 49991,
+    50535, 51085, 51642, 52204, 52773, 53347, 53928, 54515,
+    55109, 55709, 56316, 56929, 57549, 58176, 58809, 59449,
+    60097, 60751, 61413, 62081, 62757, 63441, 64132, 64830,
+    65536, 66250, 66971, 67700, 68438, 69183, 69936, 70698,
+    71468, 72246, 73032, 73828, 74632, 75444, 76266, 77096,
+    77936, 78785, 79642, 80510, 81386, 82273, 83169, 84074,
+    84990, 85915, 86851, 87796, 88752, 89719, 90696, 91684,
+    92682, 93691, 94711, 95743, 96785, 97839, 98905, 99982,
+    101070, 102171, 103283, 104408, 105545, 106694, 107856, 109031,
+    110218, 111418, 112631, 113858, 115098, 116351, 117618, 118899,
+    120194, 121502, 122825, 124163, 125515, 126882, 128263, 129660,
+};
+
+/* triangle window, 256 entries (Q15), over WV_GRAIN; w[(i+128)&255] = 2^15-1-w[i] */
+static const short wv_win[256] = {
+    0, 256, 512, 768, 1024, 1280, 1536, 1792, 2048, 2304, 2560, 2816,
+    3072, 3328, 3584, 3840, 4096, 4352, 4608, 4864, 5120, 5376, 5632, 5888,
+    6144, 6400, 6656, 6912, 7168, 7424, 7680, 7936, 8192, 8448, 8704, 8960,
+    9216, 9472, 9728, 9984, 10240, 10496, 10752, 11008, 11264, 11520, 11776, 12032,
+    12288, 12544, 12800, 13056, 13312, 13568, 13824, 14080, 14336, 14592, 14848, 15104,
+    15360, 15616, 15872, 16128, 16384, 16639, 16895, 17151, 17407, 17663, 17919, 18175,
+    18431, 18687, 18943, 19199, 19455, 19711, 19967, 20223, 20479, 20735, 20991, 21247,
+    21503, 21759, 22015, 22271, 22527, 22783, 23039, 23295, 23551, 23807, 24063, 24319,
+    24575, 24831, 25087, 25343, 25599, 25855, 26111, 26367, 26623, 26879, 27135, 27391,
+    27647, 27903, 28159, 28415, 28671, 28927, 29183, 29439, 29695, 29951, 30207, 30463,
+    30719, 30975, 31231, 31487, 31743, 31999, 32255, 32511, 32767, 32511, 32255, 31999,
+    31743, 31487, 31231, 30975, 30719, 30463, 30207, 29951, 29695, 29439, 29183, 28927,
+    28671, 28415, 28159, 27903, 27647, 27391, 27135, 26879, 26623, 26367, 26111, 25855,
+    25599, 25343, 25087, 24831, 24575, 24319, 24063, 23807, 23551, 23295, 23039, 22783,
+    22527, 22271, 22015, 21759, 21503, 21247, 20991, 20735, 20479, 20223, 19967, 19711,
+    19455, 19199, 18943, 18687, 18431, 18175, 17919, 17663, 17407, 17151, 16895, 16639,
+    16384, 16128, 15872, 15616, 15360, 15104, 14848, 14592, 14336, 14080, 13824, 13568,
+    13312, 13056, 12800, 12544, 12288, 12032, 11776, 11520, 11264, 11008, 10752, 10496,
+    10240, 9984, 9728, 9472, 9216, 8960, 8704, 8448, 8192, 7936, 7680, 7424,
+    7168, 6912, 6656, 6400, 6144, 5888, 5632, 5376, 5120, 4864, 4608, 4352,
+    4096, 3840, 3584, 3328, 3072, 2816, 2560, 2304, 2048, 1792, 1536, 1280,
+    1024, 768, 512, 256,
+};
+
+#define WV_PUT(ch, v) do { wv_buf[ch][wv_w] = (v); \
+    if (wv_w == 0) wv_buf[ch][WV_N] = (v); } while (0)
+
+void digiwave_render_in(void)
+{
+    wv_off = dn_out_off();
+}
+
+/* interpolated read at pos (Q16.16), one channel (guard sample => no mask) */
+static inline int wv_read(const int *line, unsigned pos)
+{
+    unsigned idx = (pos >> 16) & WV_MASK;
+    int frac = (int)((pos >> 1) & 0x7fff);          /* Q15 */
+    int a = line[idx];
+    return a + dn_mul15(line[idx + 1] - a, frac);
+}
+
+/* one sine sample (Q15) at a Q32 phase */
+static inline int wv_sin(unsigned ph)
+{
+    unsigned hi = ph >> 24;
+    int fr = (int)((ph >> 16) & 0xffu);
+    int s0 = sin256[hi & 0xffu];
+    int s1 = sin256[(hi + 1) & 0xffu];
+    return s0 + (((s1 - s0) * fr) >> 8);
+}
+
+void digiwave_render_out(void)
+{
+    int *p, i;
+    int mode;
+    int depth = digiwave_depth;
+
+    if (!digiwave_on) {
+        wv_wob_wet = 0;
+        wv_fla_mix = 0;
+        return;
+    }
+    mode = (digiwave_mode * 5) >> 7;
+    if (mode > WV_WID)
+        mode = WV_WID;
+
+    if (mode == WV_SHF && depth == 64)
+        return;
+    if (mode == WV_WID && depth == 64)
+        return;
+    if (mode == WV_PAN && depth == 0)
+        return;
+    if (mode == WV_WOB && depth == 0 && wv_wob_wet == 0)
+        return;
+    if (mode == WV_FLA && digiwave_mix == 0 && digiwave_fb == 0 &&
+        wv_fla_mix == 0)
+        return;
+
+    {
+        unsigned hz = 1u + (((unsigned)(digiwave_speed * 12)) >> 7);
+        unsigned inc = hz * WV_K * DN_OUT_FRAMES;       /* per block */
+        int mix = digiwave_mix * 258;                   /* Q15 */
+        int fb = digiwave_fb * 258;                     /* Q15 */
+        unsigned ph = wv_phase;
+        int l0 = wv_sin(ph);                            /* block-rate LFO: */
+        int lstep = (wv_sin(ph + inc) - l0) >> 5;       /* linear ramp      */
+        p = (int *)(DN_OUT_BASE + wv_off);
+
+        if (mode == WV_WOB) {
+            int base = 384;                             /* ~8 ms */
+            int span = depth * 3;                       /* up to ~8 ms */
+            int wet = wv_wob_wet;
+            int wet_t = depth > 0 ? 32767 : 0;          /* dry at depth 0 */
+            int wstep = (wet_t - wet) >> 5;
+            for (i = 0; i < DN_OUT_FRAMES; i++) {
+                int l = p[0], r = p[1];
+                int dq = (base << 16) + span * l0 * 2;  /* Q16.16 samples */
+                unsigned rp;
+                int wl, wr;
+                if (dq < (2 << 16)) dq = (2 << 16);     /* never wrap negative */
+                rp = ((wv_w << 16) + (WV_N << 16) - (unsigned)dq) &
+                     ((WV_N << 16) - 1);
+                wl = wv_read(wv_buf[0], rp);
+                wr = wv_read(wv_buf[1], rp);
+                p[0] = l + dn_mul15(wl - l, wet);
+                p[1] = r + dn_mul15(wr - r, wet);
+                WV_PUT(0, l);
+                WV_PUT(1, r);
+                wv_w = (wv_w + 1) & WV_MASK;
+                l0 += lstep;
+                wet += wstep;
+                p += 2;
+            }
+            wv_wob_wet = wet;
+        } else if (mode == WV_FLA) {
+            int base = 128;                             /* ~2.7 ms */
+            int span = depth;                           /* up to ~2.7 ms */
+            int m = wv_fla_mix;
+            int mstep = (mix - m) >> 5;
+            for (i = 0; i < DN_OUT_FRAMES; i++) {
+                int l = p[0], r = p[1];
+                int dq = (base << 16) + span * l0 * 2;
+                unsigned rp;
+                int wl, wr;
+                if (dq < (2 << 16)) dq = (2 << 16);
+                rp = ((wv_w << 16) + (WV_N << 16) - (unsigned)dq) &
+                     ((WV_N << 16) - 1);
+                wl = wv_read(wv_buf[0], rp);
+                wr = wv_read(wv_buf[1], rp);
+                p[0] = l + dn_mul15(wl - l, m);
+                p[1] = r + dn_mul15(wr - r, m);
+                WV_PUT(0, l + dn_mul15(wl, fb));
+                WV_PUT(1, r + dn_mul15(wr, fb));
+                wv_w = (wv_w + 1) & WV_MASK;
+                l0 += lstep;
+                m += mstep;
+                p += 2;
+            }
+            wv_fla_mix = mix;
+        } else if (mode == WV_SHF) {
+            const int *bl = wv_buf[0], *br = wv_buf[1];
+            unsigned r0, r1, inc2;
+            int a0, a1;
+            inc2 = (unsigned)wv_ratio[depth];
+            if (!wv_primed) {
+                r0 = r1 = ((wv_w + WV_N - WV_LEAD) & WV_MASK) << 16;
+                a0 = 0;
+                a1 = WV_GRAIN / 2;
+                wv_primed = 1;
+            } else {
+                r0 = wv_gpos[0];
+                r1 = wv_gpos[1];
+                a0 = wv_age[0];
+                a1 = wv_age[1];
+            }
+            for (i = 0; i < DN_OUT_FRAMES; i++) {
+                int l = p[0], r = p[1];
+                unsigned i0 = (r0 >> 16) & WV_MASK;
+                unsigned i1 = (r1 >> 16) & WV_MASK;
+                int f0 = (int)((r0 >> 1) & 0x7fff);
+                int f1 = (int)((r1 >> 1) & 0x7fff);
+                int a_l = bl[i0], b_l = bl[i1];
+                int a_r = br[i0], b_r = br[i1];
+                int sl0 = a_l + dn_mul15(bl[i0 + 1] - a_l, f0);
+                int sr0 = a_r + dn_mul15(br[i0 + 1] - a_r, f0);
+                int sl1 = b_l + dn_mul15(bl[i1 + 1] - b_l, f1);
+                int sr1 = b_r + dn_mul15(br[i1 + 1] - b_r, f1);
+                int w0 = wv_win[a0 >> 1], w1 = 32767 - w0;
+                p[0] = dn_mul15(sl0, w0) + dn_mul15(sl1, w1);
+                p[1] = dn_mul15(sr0, w0) + dn_mul15(sr1, w1);
+                WV_PUT(0, l);
+                WV_PUT(1, r);
+                wv_w = (wv_w + 1) & WV_MASK;
+
+                r0 += inc2; a0++;
+                if (a0 >= WV_GRAIN) {
+                    a0 = 0;
+                    r0 = ((wv_w + WV_N - WV_LEAD) & WV_MASK) << 16;
+                }
+                r1 += inc2; a1++;
+                if (a1 >= WV_GRAIN) {
+                    a1 = 0;
+                    r1 = ((wv_w + WV_N - WV_LEAD) & WV_MASK) << 16;
+                }
+                p += 2;
+            }
+            wv_gpos[0] = r0;
+            wv_gpos[1] = r1;
+            wv_age[0] = a0;
+            wv_age[1] = a1;
+        } else if (mode == WV_PAN) {
+            int dep = depth * 258;                      /* Q15 */
+            for (i = 0; i < DN_OUT_FRAMES; i++) {
+                int att = dn_mul15(l0, dep);
+                int gl = 32767, gr = 32767;
+                if (att > 0) gl = 32767 - att;
+                else gr = 32767 + att;
+                p[0] = dn_mul15(p[0], gl);
+                p[1] = dn_mul15(p[1], gr);
+                l0 += lstep;
+                p += 2;
+            }
+        } else {                                        /* WV_WID */
+            int wf = depth * 256;                       /* Q14, 64 -> 1.0 */
+            for (i = 0; i < DN_OUT_FRAMES; i++) {
+                int l = p[0], r = p[1];
+                int m = (l + r) >> 1;
+                int s = dn_mul14((l - r) >> 1, wf);
+                p[0] = m + s;
+                p[1] = m - s;
+                p += 2;
+            }
+        }
+        wv_phase = ph + inc;
+    }
+}

@@ -43,6 +43,19 @@ lives at `0x4018D104`, 182 entries; the ones we use are listed below). The risky
 | `68`  | meter on/off | >=64 = ON |
 | `69`  | EQ low shelf | 0..127 (64 = flat) |
 | `96`  | EQ high shelf | 0..127 (64 = flat) |
+| `20`  | CRUSH on/off | >=64 = ON |
+| `21`  | CRUSH mode | 0..127 (BITS / SR / CRUNCH) |
+| `22`  | CRUSH amount | 0..127 (`0` = bypass) |
+| `23`  | CRUSH tune | 0..127 (dither / extra SR ratio) |
+| `24`  | WAVE on/off | >=64 = ON |
+| `25`  | WAVE mode | 0..127 (WOB / SHFT / FLAN / PAN / WIDE) |
+| `26`  | WAVE speed | 0..127 (LFO rate) |
+| `27`  | WAVE depth | 0..127 (depth / semitones / width) |
+| `28`  | WAVE mix | 0..127 (flanger dry/wet) |
+| `29`  | WAVE fb | 0..127 (flanger feedback) |
+
+**CC 20–29 are not yet checked against the stock CC table** (`0x4018D104`,
+182 entries) — confirm they are free before sequencing WAVE/CRUSH from a DAW.
 
 Not CC-controlled: the parked `digimod_*` LFO bridge.
 
@@ -53,7 +66,7 @@ follow the active pattern and are saved with it.
 
 `tests/digiemu_midi_cc.py` enters the **real patched site `0x400ED94E`** with a
 crafted caller frame (track=9 makes the stock router return early) and checks
-all 10 CCs plus the dirty flag. Entering the real site (not the glue directly)
+the CC list plus the dirty flag (extend `CASES` with 20–29). Entering the real site (not the glue directly)
 is what catches a `jsr`-vs-`jmp` stack mistake. digiemu has no MIDI input model,
 so **the raw MIDI receive path itself is validated on hardware**, not in the
 emulator.

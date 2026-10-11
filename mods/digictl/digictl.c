@@ -31,7 +31,9 @@
 #define DN_FXKIND     0
 #define DN_FEKIND     1
 #define DN_EQKIND     2
-#define DN_NPAGES     3
+#define DN_CRKIND     3
+#define DN_WVKIND     4
+#define DN_NPAGES     5
 #define DC_PER_STEP   4
 #define DG_TOP        53            /* rows 53..63 are the stock status bar */
 
@@ -44,6 +46,9 @@ extern int digieq_on, digieq_lo, digieq_hi;
 extern int digiring_on, digiring_depth, digiring_freq;
 extern int digifold_on, digifold_amount, digifold_mode;
 extern int digimeter_on, digimeter_l, digimeter_r;
+extern int digicrush_on, digicrush_mode, digicrush_amount, digicrush_tune;
+extern int digiwave_on, digiwave_mode, digiwave_speed, digiwave_depth;
+extern int digiwave_mix, digiwave_fb;
 
 /* Track-LFO bridge. A track LFO can target the track's FLTR FREQ; that live
  * value is in the per-voice record at 0x80003544 + (voice-1)*0x9E, FREQ at +0
@@ -68,17 +73,20 @@ int digimod_voice = 1;               /* 1..8 */
 #define DN_PAT_STRIDE 0x1611Du
 #define DN_PAT_SLOTS  128u
 #define DN_STORE_OFF  0x1040u
-#define DN_STORE_N    12
-#define DN_STORE_VER  5
+#define DN_STORE_N    22
+#define DN_STORE_VER  6
 #define DN_STORE_MAG(a) ((a)[0] == 0x44 && (a)[1] == 0x47 && \
                          (a)[2] == 0x58 && (a)[3] == 0x31 && \
-                         (a)[5] == DN_STORE_VER)               /* "DGX1" v5 */
+                         (a)[5] == DN_STORE_VER)               /* "DGX1" v6 */
 
 static int *const dn_fxparam[DN_STORE_N] = {
     &digiring_on, &digiring_depth, &digiring_freq,
     &digieq_on, &digieq_lo, &digieq_hi,
     &digifold_on, &digifold_amount, &digifold_mode,
     &digimeter_on, &digimod_dest, &digimod_voice,
+    &digicrush_on, &digicrush_mode, &digicrush_amount, &digicrush_tune,
+    &digiwave_on, &digiwave_mode, &digiwave_speed, &digiwave_depth,
+    &digiwave_mix, &digiwave_fb,
 };
 
 static unsigned char *dn_store_blk;             /* block we last synced */
@@ -161,6 +169,16 @@ static int clampi(int v, int lo, int hi);
 #define DN_CC_EQ_LO      69
 #define DN_CC_EQ_HI      96
 #define DN_CC_METER_ON   68
+#define DN_CC_CRU_ON     20
+#define DN_CC_CRU_MODE   21
+#define DN_CC_CRU_AMT    22
+#define DN_CC_CRU_TUNE   23
+#define DN_CC_WV_ON      24
+#define DN_CC_WV_MODE    25
+#define DN_CC_WV_SPD     26
+#define DN_CC_WV_DEP     27
+#define DN_CC_WV_MIX     28
+#define DN_CC_WV_FB      29
 
 void digictl_cc_apply(int cc, int value)
 {
@@ -176,12 +194,24 @@ void digictl_cc_apply(int cc, int value)
     case DN_CC_EQ_LO:      digieq_lo = v; break;
     case DN_CC_EQ_HI:      digieq_hi = v; break;
     case DN_CC_METER_ON:   digimeter_on = (v >= 64); break;
+    case DN_CC_CRU_ON:     digicrush_on = (v >= 64); break;
+    case DN_CC_CRU_MODE:   digicrush_mode = v; break;
+    case DN_CC_CRU_AMT:    digicrush_amount = v; break;
+    case DN_CC_CRU_TUNE:   digicrush_tune = v; break;
+    case DN_CC_WV_ON:      digiwave_on = (v >= 64); break;
+    case DN_CC_WV_MODE:    digiwave_mode = v; break;
+    case DN_CC_WV_SPD:     digiwave_speed = v; break;
+    case DN_CC_WV_DEP:     digiwave_depth = v; break;
+    case DN_CC_WV_MIX:     digiwave_mix = v; break;
+    case DN_CC_WV_FB:      digiwave_fb = v; break;
     default: return;                 /* not ours: stock handles/ignores it */
     }
     dn_store_dirty = 1;              /* persist with the pattern */
 }
 
-static const int dc_kinds[DN_NPAGES] = { DN_FXKIND, DN_FEKIND, DN_EQKIND };
+static const int dc_kinds[DN_NPAGES] = {
+    DN_FXKIND, DN_FEKIND, DN_EQKIND, DN_CRKIND, DN_WVKIND
+};
 
 #define DN_MASTER_VT  0x40199BAC
 static char *dc_view;               /* the master view, from its last draw */
@@ -233,7 +263,7 @@ static void add_page(char *view)
     if (!v || n < 1 || n > 13)
         return;
     for (i = 0; i < n; i++)
-        if (v[i] >= DN_FXKIND && v[i] <= DN_EQKIND)
+        if (v[i] >= DN_FXKIND && v[i] <= DN_WVKIND)
             return;
     pos = n >= 4 ? 3 : n;                   /* after the stock master pages */
     nv = DN_OP_NEW(4u * (unsigned)(n + DN_NPAGES));
@@ -241,16 +271,16 @@ static void add_page(char *view)
         return;
     for (i = j = 0; i < n; i++) {
         if (i == pos) {
-            nv[j++] = DN_FXKIND;
-            nv[j++] = DN_FEKIND;
-            nv[j++] = DN_EQKIND;
+            int m;
+            for (m = 0; m < DN_NPAGES; m++)
+                nv[j++] = dc_kinds[m];
         }
         nv[j++] = v[i];
     }
     if (pos == n) {
-        nv[j++] = DN_FXKIND;
-        nv[j++] = DN_FEKIND;
-        nv[j++] = DN_EQKIND;
+        int m;
+        for (m = 0; m < DN_NPAGES; m++)
+            nv[j++] = dc_kinds[m];
     }
     *(int **)(view + 124) = nv;
     *(int **)(view + 128) = nv + n + DN_NPAGES;
@@ -449,6 +479,51 @@ static void dg_eq_page(void *bmp)
     dg_title(bmp, "TILT");
 }
 
+/* ---------------- CRUSH: big stage name + amount/tune bars ---------------- */
+static const char *dg_crushname(int m)
+{
+    static const char *const n[3] = { "BITS", "SR", "CRUNCH" };
+    int b = m * 3 / 128;
+    if (b > 2) b = 2;
+    return n[b];
+}
+
+static void dg_crush_page(void *bmp)
+{
+    const char *m = dg_crushname(digicrush_mode);
+    DN_FILLRECT(bmp, 0, 0, 127, DG_TOP - 1, 0);
+    dg_arrows(bmp);
+    dg_text(bmp, (128 - dg_strw(m, 2)) / 2, 36, m, 2);
+    dg_vbar(bmp, 104, 106, digicrush_on ? digicrush_amount : 0, 127);
+    dg_vbar(bmp, 110, 112, digicrush_tune, 127);
+    DN_TEXTF(bmp, DN_FONT5, 2, 4, -1, "AMT %d TUN %d",
+             digicrush_amount, digicrush_tune);
+    dg_title(bmp, "CRUSH");
+}
+
+/* ---------------- WAVE: big mode name + speed/depth/mix bars ---------------- */
+static const char *dg_wavename(int m)
+{
+    static const char *const n[5] = { "WOB", "SHFT", "FLAN", "PAN", "WIDE" };
+    int b = m * 5 / 128;
+    if (b > 4) b = 4;
+    return n[b];
+}
+
+static void dg_wave_page(void *bmp)
+{
+    const char *m = dg_wavename(digiwave_mode);
+    DN_FILLRECT(bmp, 0, 0, 127, DG_TOP - 1, 0);
+    dg_arrows(bmp);
+    dg_text(bmp, (128 - dg_strw(m, 2)) / 2, 36, m, 2);
+    dg_vbar(bmp, 99, 101, digiwave_speed, 127);
+    dg_vbar(bmp, 106, 108, digiwave_depth, 127);
+    dg_vbar(bmp, 113, 115, digiwave_mix, 127);
+    DN_TEXTF(bmp, DN_FONT5, 2, 4, -1, "SPD %d DEP %d",
+             digiwave_speed, digiwave_depth);
+    dg_title(bmp, "WAVE");
+}
+
 /* vtable slot 4 of the master view: draw */
 void digictl_mdraw(void *view, void *bmp)
 {
@@ -464,6 +539,10 @@ void digictl_mdraw(void *view, void *bmp)
         dg_fold_page(bmp);
     else if (k == DN_EQKIND)
         dg_eq_page(bmp);
+    else if (k == DN_CRKIND)
+        dg_crush_page(bmp);
+    else if (k == DN_WVKIND)
+        dg_wave_page(bmp);
 }
 
 /* every UI frame: keep the master view redrawing while it is shown, so the
@@ -501,7 +580,8 @@ int digictl_enc(void *brain, void *ev)
     if (!master_live(dc_view))
         return 0;
     k = cur_kind(dc_view);
-    if (k != DN_FXKIND && k != DN_FEKIND && k != DN_EQKIND)
+    if (k != DN_FXKIND && k != DN_FEKIND && k != DN_EQKIND &&
+        k != DN_CRKIND && k != DN_WVKIND)
         return 0;
     if (!delta)
         return 1;
@@ -523,6 +603,24 @@ int digictl_enc(void *brain, void *ev)
         case 1: digieq_on = (d > 0); break;
         case 5: digieq_lo = clampi(digieq_lo + d, 0, 127); break;
         case 8: digieq_hi = clampi(digieq_hi + d, 0, 127); break;
+        default: break;
+        }
+    } else if (k == DN_CRKIND) {
+        switch (id) {
+        case 1: digicrush_on = (d > 0); break;
+        case 4: digicrush_mode = clampi(digicrush_mode + d, 0, 127); break;
+        case 5: digicrush_amount = clampi(digicrush_amount + d, 0, 127); break;
+        case 6: digicrush_tune = clampi(digicrush_tune + d, 0, 127); break;
+        default: break;
+        }
+    } else if (k == DN_WVKIND) {
+        switch (id) {
+        case 1: digiwave_on = (d > 0); break;
+        case 4: digiwave_mode = clampi(digiwave_mode + d, 0, 127); break;
+        case 5: digiwave_speed = clampi(digiwave_speed + d, 0, 127); break;
+        case 6: digiwave_depth = clampi(digiwave_depth + d, 0, 127); break;
+        case 7: digiwave_mix = clampi(digiwave_mix + d, 0, 127); break;
+        case 8: digiwave_fb = clampi(digiwave_fb + d, 0, 127); break;
         default: break;
         }
     } else {                             /* DN_FXKIND */
