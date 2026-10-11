@@ -29,6 +29,7 @@ int digifold_amount = 0;            /* 0..127 */
 int digifold_mode = 48;            /* 0..127 fold type (CLEAN..TRSH) */
 
 static volatile unsigned df_off;
+static int df_amt_cur;              /* ramped amount: OFF fades to 0, then skips */
 
 void digifold_render_in(void)
 {
@@ -50,18 +51,18 @@ static void df_mode(int *foldpct, int *drvpct)
     *drvpct  = df_drvpct[b]  + (df_drvpct[nb]  - df_drvpct[b])  * r / 127;
 }
 
-/* fold gain (Q8: 256 = 1.0x) for the current mode */
-static unsigned df_gain(int foldpct)
+/* fold gain (Q8: 256 = 1.0x) for the current mode and ramped amount */
+static unsigned df_gain(int foldpct, int amt)
 {
-    return 256u + (unsigned)(digifold_amount * 8 * foldpct) / 100u;
+    return 256u + (unsigned)(amt * 8 * foldpct) / 100u;
 }
 
 /* overdrive drive gain (Q8): 1.0x .. ~4.0x, 0 = no overdrive */
-static unsigned df_drive_gain(int drvpct)
+static unsigned df_drive_gain(int drvpct, int amt)
 {
     if (drvpct <= 0)
         return 0u;
-    return 256u + (unsigned)(digifold_amount * 6 * drvpct) / 100u;
+    return 256u + (unsigned)(amt * 6 * drvpct) / 100u;
 }
 
 static inline int df_fold(int x, unsigned gain)
@@ -92,12 +93,16 @@ void digifold_render_out(void)
 {
     int *p;
     unsigned gain, dg;
-    int i, fp, dp;
-    if (!digifold_on || digifold_amount == 0)
-        return;                         /* amount 0 is exact bypass */
+    int i, fp, dp, amt_t;
+    amt_t = digifold_on ? digifold_amount : 0;
+    if (amt_t == 0 && df_amt_cur == 0)
+        return;                         /* true bypass: settled and off */
+    df_amt_cur += (amt_t - df_amt_cur) >> 5;    /* click-free fade */
+    if (df_amt_cur == 0)
+        return;
     df_mode(&fp, &dp);
-    gain = df_gain(fp);
-    dg = df_drive_gain(dp);
+    gain = df_gain(fp, df_amt_cur);
+    dg = df_drive_gain(dp, df_amt_cur);
     p = (int *)(DN_OUT_BASE + df_off);
     for (i = 0; i < DN_OUT_FRAMES; i++) {
         p[0] = df_fold(p[0], gain);

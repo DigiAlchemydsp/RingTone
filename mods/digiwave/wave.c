@@ -48,9 +48,12 @@ static int wv_buf[2][WV_N + 1];
 static unsigned wv_w;           /* write index */
 static unsigned wv_phase;       /* LFO phase, Q32 */
 
-/* ramped (de-zipper) state, Q15 */
+/* ramped (de-zipper) state, Q15: each mode's neutral value = true bypass */
 static int wv_wob_wet;
 static int wv_fla_mix;
+static int wv_shf_wet;
+static int wv_pan_dep;
+static int wv_wide_cur = 64;
 
 /* SHFT grain state */
 static unsigned wv_gpos[2];     /* read position, Q16.16 */
@@ -135,12 +138,8 @@ void digiwave_render_out(void)
     int *p, i;
     int mode;
     int depth = digiwave_depth;
+    int on = digiwave_on ? 1 : 0;
 
-    if (!digiwave_on) {
-        wv_wob_wet = 0;
-        wv_fla_mix = 0;
-        return;
-    }
     if (digiwave_page) {                        /* STEREO group */
         int b = 2 + ((digiwave_smode * 3) >> 7);
         mode = b > WV_WID ? WV_WID : b;
@@ -148,18 +147,6 @@ void digiwave_render_out(void)
         int b = (digiwave_pmode * 2) >> 7;
         mode = b > 1 ? 1 : b;
     }
-
-    if (mode == WV_SHF && depth == 64)
-        return;
-    if (mode == WV_WID && depth == 64)
-        return;
-    if (mode == WV_PAN && depth == 0)
-        return;
-    if (mode == WV_WOB && depth == 0 && wv_wob_wet == 0)
-        return;
-    if (mode == WV_FLA && digiwave_mix == 0 && digiwave_fb == 0 &&
-        wv_fla_mix == 0)
-        return;
 
     {
         unsigned hz = 1u + (((unsigned)(digiwave_speed * 12)) >> 7);
@@ -175,8 +162,10 @@ void digiwave_render_out(void)
             int base = 384;                             /* ~8 ms */
             int span = depth * 3;                       /* up to ~8 ms */
             int wet = wv_wob_wet;
-            int wet_t = depth > 0 ? 32767 : 0;          /* dry at depth 0 */
-            int wstep = (wet_t - wet) >> 5;
+            int wet_t = (on && depth > 0) ? 32767 : 0;  /* neutral = dry */
+            int wstep;
+            if (wet_t == 0 && wet == 0) return;         /* true bypass */
+            wstep = (wet_t - wet) >> 5;
             for (i = 0; i < DN_OUT_FRAMES; i++) {
                 int l = p[0], r = p[1];
                 int dq = (base << 16) + span * l0 * 2;  /* Q16.16 samples */
@@ -201,7 +190,10 @@ void digiwave_render_out(void)
             int base = 128;                             /* ~2.7 ms */
             int span = depth;                           /* up to ~2.7 ms */
             int m = wv_fla_mix;
-            int mstep = (mix - m) >> 5;
+            int m_t = on ? mix : 0;                     /* neutral = dry */
+            int mstep;
+            if (m_t == 0 && m == 0) return;
+            mstep = (m_t - m) >> 5;
             for (i = 0; i < DN_OUT_FRAMES; i++) {
                 int l = p[0], r = p[1];
                 int dq = (base << 16) + span * l0 * 2;
@@ -226,6 +218,11 @@ void digiwave_render_out(void)
             const int *bl = wv_buf[0], *br = wv_buf[1];
             unsigned r0, r1, inc2;
             int a0, a1;
+            int w = wv_shf_wet;
+            int w_t = (on && depth != 64) ? 32767 : 0;  /* neutral = dry */
+            int wstep;
+            if (w_t == 0 && w == 0) { wv_primed = 0; return; }
+            wstep = (w_t - w) >> 5;
             inc2 = (unsigned)wv_ratio[depth];
             if (!wv_primed) {
                 r0 = r1 = ((wv_w + WV_N - WV_LEAD) & WV_MASK) << 16;
@@ -251,10 +248,11 @@ void digiwave_render_out(void)
                 int sl1 = b_l + dn_mul15(bl[i1 + 1] - b_l, f1);
                 int sr1 = b_r + dn_mul15(br[i1 + 1] - b_r, f1);
                 int w0 = wv_win[a0 >> 1];
-                /* complementary windows: g0*w0 + g1*(1-w0) = g1 + (g0-g1)*w0,
-                 * so one mul per channel instead of two. */
-                p[0] = sl1 + dn_mul15(sl0 - sl1, w0);
-                p[1] = sr1 + dn_mul15(sr0 - sr1, w0);
+                int sl = sl1 + dn_mul15(sl0 - sl1, w0);  /* crossfaded grains */
+                int sr = sr1 + dn_mul15(sr0 - sr1, w0);
+                /* complementary windows -> one mul; then dry<->shifted */
+                p[0] = l + dn_mul15(sl - l, w);
+                p[1] = r + dn_mul15(sr - r, w);
                 WV_PUT(0, l);
                 WV_PUT(1, r);
                 wv_w = (wv_w + 1) & WV_MASK;
@@ -269,14 +267,20 @@ void digiwave_render_out(void)
                     a1 = 0;
                     r1 = ((wv_w + WV_N - WV_LEAD) & WV_MASK) << 16;
                 }
+                w += wstep;
                 p += 2;
             }
             wv_gpos[0] = r0;
             wv_gpos[1] = r1;
             wv_age[0] = a0;
             wv_age[1] = a1;
+            wv_shf_wet = w;
         } else if (mode == WV_PAN) {
-            int dep = depth * 258;                      /* Q15 */
+            int dep = wv_pan_dep;
+            int d_t = on ? depth * 258 : 0;             /* neutral = centre */
+            int dstep;
+            if (d_t == 0 && dep == 0) return;           /* true bypass */
+            dstep = (d_t - dep) >> 5;
             for (i = 0; i < DN_OUT_FRAMES; i++) {
                 int att = dn_mul15(l0, dep);
                 int gl = 32767, gr = 32767;
@@ -285,18 +289,26 @@ void digiwave_render_out(void)
                 p[0] = dn_mul15(p[0], gl);
                 p[1] = dn_mul15(p[1], gr);
                 l0 += lstep;
+                dep += dstep;
                 p += 2;
             }
+            wv_pan_dep = dep;
         } else {                                        /* WV_WID */
-            int wf = depth * 256;                       /* Q14, 64 -> 1.0 */
+            int d = wv_wide_cur;
+            int d_t = on ? depth : 64;                  /* neutral = 64 (1.0) */
+            int dstep;
+            if (d_t == 64 && d == 64) return;           /* true bypass */
+            dstep = (d_t - d) >> 5;
             for (i = 0; i < DN_OUT_FRAMES; i++) {
                 int l = p[0], r = p[1];
                 int m = (l + r) >> 1;
-                int s = dn_mul14((l - r) >> 1, wf);
+                int s = dn_mul14((l - r) >> 1, d * 256);
                 p[0] = m + s;
                 p[1] = m - s;
+                d += dstep;
                 p += 2;
             }
+            wv_wide_cur = d;
         }
         wv_phase = ph + inc;
     }

@@ -5,7 +5,7 @@ optimization methods used (and why), what is repurposed from the stock OS and
 from RingTone, and the RAM / flash / headroom ledger. This is the technical
 companion to `HANDOFF.md`; `DSP.md` is the address/architecture reference.
 
-Current package: `tonefx 3.1e` (`.run 18804`, `.bss 25234`).
+Current package: `tonefx 3.1f` (`.run 19380`, `.bss 25250`).
 
 ## 1. Where the code runs
 
@@ -76,10 +76,15 @@ Ordered roughly by how much they bought.
    once per block and stepped across the 32 frames
    (`step = (target - cur) >> 5`), so knob moves and bypass are click-free with
    no per-sample condition tests. Used by ring, EQ, fold, wave.
-3. **Exact bypass / early-out.** A handler returns immediately when off or at
-   its neutral value: fold `amount==0`, crush `amount==0`, wave at
-   WOB/FLAN/PAN depth 0, SHFT/WIDE at 64, and each has a settled-state check.
-   A bypassed FX costs ~one branch per block.
+3. **Click-free ramped true bypass (per section).** Each section's amount ramps
+   to its **neutral value** over ~1 block (ring depth 0, EQ flat, fold amount 0,
+   crush amount 0, WAVE per-mode neutral: WOB wet 0, FLAN mix 0, SHFT dry,
+   PAN centre, WIDE 64), and once settled the handler `return`s **before any
+   per-sample loop** — a true bypass with zero per-sample cost and an exact
+   passthrough. This replaced the hard on/off for fold/crush/WAVE (which
+   clicked) and fixed crush's bit mapping so amount 0 is identity (24 bits, not
+   16). WAVE's SHFT mode gained a dry/wet fade so it can bypass cleanly; PAN and
+   WIDE now ramp too.
 4. **Block-rate LFO (one sine per block).** `digiwave` and `digiring` evaluate
    `sin256` at the block start and a linear per-sample step
    (`lstep = (sin(next) - sin(now)) >> 5`), replacing a per-sample sine
@@ -120,7 +125,7 @@ Ordered roughly by how much they bought.
 
     | flags | `.run` | `.bss` | note |
     |---|---|---|---|
-    | `-O2` (default) | 18804 | 25234 | imports nothing |
+    | `-O2` (default) | 19380 | 25250 | imports nothing |
     | `-O3 -funroll-loops` | 35112 | 25230 | **imports `memset`** (loop distribution) — unusable |
     | `-O3 -fno-tree-loop-distribute-patterns` | 24152 | 25230 | +28 % code, imports nothing |
 
@@ -161,8 +166,8 @@ Ordered roughly by how much they bought.
 
 | item | value |
 |---|---|
-| `.run` (code + rodata) | 18,804 B |
-| `.bss` (RAM state) | 25,234 B |
+| `.run` (code + rodata) | 19,380 B |
+| `.bss` (RAM state) | 25,250 B |
 | — of which `digiwave` delay line | 2048 × 2 × 4 = 16,384 B (+8 guard) |
 | — of which tables (`sin256`, `wv_ratio`, `wv_win`) | ~1,024 + 512 + 512 B (`.run`) |
 | **RAM spare** | **~86 KB of 128 KB** |

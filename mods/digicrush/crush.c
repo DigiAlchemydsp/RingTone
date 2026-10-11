@@ -35,6 +35,7 @@ static unsigned dc_gain;        /* DRV: Q8 gain, 256 = 1.0x */
 /* state */
 static int dc_hold_l, dc_hold_r;
 static int dc_cnt;
+static int dc_amt_cur;              /* ramped amount: OFF fades to 0, then skips */
 static unsigned dc_lfsr = 0x2545f491u;
 
 void digicrush_render_in(void)
@@ -57,26 +58,32 @@ static inline int dc_clip(int v)
 
 void digicrush_render_out(void)
 {
-    int *p, i;
+    int *p, i, amt, amt_t;
     unsigned lfsr;
 
-    if (!digicrush_on || digicrush_amount == 0)
-        return;                                  /* exact bypass */
+    amt_t = digicrush_on ? digicrush_amount : 0;
+    if (amt_t == 0 && dc_amt_cur == 0)
+        return;                                  /* true bypass: settled, off */
+    dc_amt_cur += (amt_t - dc_amt_cur) >> 5;     /* click-free fade */
+    if (dc_amt_cur == 0)
+        return;
+    amt = dc_amt_cur;
 
     dc_mode = (digicrush_mode * 3) >> 7;
     if (dc_mode > DC_MODE_DRV)
         dc_mode = DC_MODE_DRV;
 
     if (dc_mode == DC_MODE_BITS) {
-        int bits = 16 - (digicrush_amount * 12 >> 7);       /* 16..4 */
+        int bits = 24 - (amt * 20 >> 7);                    /* 24..4 (24 = clean) */
+        if (bits > 24) bits = 24;
         if (bits < 4) bits = 4;
         dc_mask = (int)(0xffffffffu << (32 - bits));
         dc_dither = digicrush_tune > 0;
     } else if (dc_mode == DC_MODE_SR) {
-        dc_ratio = 1 + (digicrush_amount * 63 >> 7) + (digicrush_tune * 63 >> 7);
+        dc_ratio = 1 + (amt * 63 >> 7) + (digicrush_tune * 63 >> 7);
         if (dc_ratio > 64) dc_ratio = 64;
     } else {
-        dc_gain = 256u + (unsigned)(digicrush_amount * 6);  /* 1x..~4x Q8 */
+        dc_gain = 256u + (unsigned)(amt * 6);               /* 1x..~4x Q8 */
     }
 
     p = (int *)(DN_OUT_BASE + dc_off);
