@@ -497,35 +497,37 @@ static const char *dg_crushname(int m)
     return n[b];
 }
 
-/* left third: a scrolling waveform, quantised / held / clipped by the stage */
+/* left third, HORIZONTAL: collapses to a flat line at amount 0; the scroll
+ * waveform gets quantised (BITS) / held (SR) / clipped (CRUNCH) and taller as
+ * amount rises; tune adds dither specks. No frame. */
 static int dg_cr_ph;
 static void dg_crush_gfx(void *bmp)
 {
     int mode = digicrush_mode * 3 / 128;
     int amt = digicrush_on ? digicrush_amount : 0;
-    int cy = 28, h = 13, x;
+    int cy = 26, x;
     if (mode > 2) mode = 2;
-    dg_cr_ph += 1 + (amt >> 4);                 /* animate faster with depth */
-    DN_FRAMERECT(bmp, 4, cy - h - 2, 40, cy + h + 2, 1);
-    for (x = 6; x <= 38; x++) {
-        int px = (x - 6 + dg_cr_ph) & 0x1f;
-        int v = (sin256[(px << 3) & 0xff] * h) >> 15;   /* -h..h */
+    dg_cr_ph += 1 + (amt >> 4);
+    for (x = 4; x <= 40; x++) {
+        int amp = (amt * 12) / 127;                     /* 0 -> a line */
+        int px = (x - 4 + dg_cr_ph) & 0x1f;
+        int v = (sin256[(px << 3) & 0xff] * amp) >> 15;
         int y;
         if (mode == 0 && amt > 0) {                     /* BITS: quantise */
-            int step = 1 + (amt * h) / 127;
+            int step = 1 + (amt * 8) / 127;
             v = (v / step) * step;
         } else if (mode == 1 && amt > 0) {              /* SR: sample-hold */
-            int hold = 1 + amt / 16;
+            int hold = 1 + amt / 20;
             v = (v / hold) * hold;
         } else if (mode == 2 && amt > 0) {              /* CRUNCH: clip */
-            int lim = h - (amt * (h - 2)) / 127;
+            int lim = amp - (amt * (amp - 1)) / 127;
             if (v > lim) v = lim;
             if (v < -lim) v = -lim;
         }
         y = cy + v;
         DN_FILLRECT(bmp, x, y, x, y, 1);
         if (mode == 0 && digicrush_tune > 0 && dg_rand(48) < digicrush_tune / 4)
-            DN_FILLRECT(bmp, x, cy - h, x, cy + h, 1);  /* dither specks */
+            DN_FILLRECT(bmp, x, cy - 10, x, cy + 10, 1);  /* dither specks */
     }
 }
 
@@ -559,58 +561,56 @@ static const char *dg_sname(void)          /* STEREO page's own mode */
     return n[b > 2 ? 2 : b];
 }
 
-/* left third, PITCH: WOB = a sine (amp = depth, wavelength = speed);
- * SHFT = a scrolling ramp whose slope is the transposition */
+/* left third, VERTICAL: two lines run top to bottom. They stay straight at
+ * depth 0 and, as depth (amplitude) and speed (nodes) rise, wobble and
+ * intertwine (cross) at more points. WOB and SHFT share it. No frame. */
 static int dg_pi_ph;
 static void dg_pitch_gfx(void *bmp)
 {
-    int shf = (digiwave_pmode * 2) >> 7;
     int dep = digiwave_depth, spd = digiwave_speed;
-    int cy = 28, h = 13, x;
-    dg_pi_ph += 1 + (spd >> 4);
-    DN_FRAMERECT(bmp, 4, cy - h - 2, 40, cy + h + 2, 1);
-    for (x = 6; x <= 38; x++) {
-        int y;
-        if (!shf) {
-            int amp = 2 + (dep * (h - 2)) / 127;
-            int wl = 6 + ((127 - spd) * 22) / 127;
-            int idx = ((x * 256 / wl) + dg_pi_ph) & 0xff;
-            y = cy - ((sin256[idx] * amp) >> 15);
-        } else {
-            int slope = (dep - 64) * 3 / 8;             /* semitones */
-            y = cy - (((x - 22) * slope) >> 4) - ((dg_pi_ph & 7) - 4);
-            if (y < cy - h) y = cy - h;
-            if (y > cy + h) y = cy + h;
-        }
-        DN_FILLRECT(bmp, x, y, x, y, 1);
+    int c1 = 15, c2 = 29;                           /* the two lines */
+    int amp = (dep * 14) / 127;                     /* 0 -> straight */
+    int k = 1 + (spd * 5) / 127;                    /* nodes 1..6 */
+    int y;
+    dg_pi_ph += 2 + (spd >> 3);
+    for (y = 2; y <= 51; y++) {
+        int idx = ((y * k * 256) / 52 + dg_pi_ph) & 0xff;
+        int s = (sin256[idx] * amp) >> 15;
+        int x1 = c1 + s;
+        int x2 = c2 - s;                            /* opposite -> cross */
+        DN_FILLRECT(bmp, x1, y, x1, y, 1);
+        DN_FILLRECT(bmp, x2, y, x2, y, 1);
     }
 }
 
-/* left third, STEREO: FLAN = a comb ripple, PAN = a moving dot,
- * WIDE = two dots spreading apart */
+/* left third, HORIZONTAL: collapses to one line at depth 0. FLAN = a comb
+ * ripple (amp = depth, wavelength = speed); PAN = two lines moving apart
+ * oppositely; WIDE = two lines spreading. No frame. */
 static int dg_st_ph;
 static void dg_stereo_gfx(void *bmp)
 {
     int mode = digiwave_smode * 3 / 128;
     int dep = digiwave_depth, spd = digiwave_speed;
-    int cx = 22, cy = 28, h = 13, x;
+    int cy = 26, x;
     if (mode > 2) mode = 2;
-    dg_st_ph += 1 + (spd >> 4);
-    DN_FRAMERECT(bmp, 4, cy - h - 2, 40, cy + h + 2, 1);
+    dg_st_ph += 2 + (spd >> 3);
     if (mode == 2) {                                    /* WIDE */
-        int spread = 1 + (dep * 13) / 127;
-        DN_FILLRECT(bmp, cx - spread, cy, cx + spread, cy, 1);
-        DN_FILLRECT(bmp, cx - spread, cy - 2, cx - spread, cy + 2, 1);
-        DN_FILLRECT(bmp, cx + spread, cy - 2, cx + spread, cy + 2, 1);
+        int spread = (dep * 10) / 127;                  /* 0 -> one line */
+        for (x = 4; x <= 40; x++) {
+            DN_FILLRECT(bmp, x, cy - spread, x, cy - spread, 1);
+            DN_FILLRECT(bmp, x, cy + spread, x, cy + spread, 1);
+        }
     } else if (mode == 1) {                             /* PAN */
-        int amp = (dep * 16) / 127;
-        int p = cx + ((sin256[dg_st_ph & 0xff] * amp) >> 15);
-        DN_FILLRECT(bmp, 6, cy, 38, cy, 1);
-        DN_FILLRECT(bmp, p - 1, cy - 3, p + 1, cy + 3, 1);
+        int amp = (dep * 10) / 127;
+        int s = (sin256[dg_st_ph & 0xff] * amp) >> 15;
+        for (x = 4; x <= 40; x++) {
+            DN_FILLRECT(bmp, x, cy + s, x, cy + s, 1);
+            DN_FILLRECT(bmp, x, cy - s, x, cy - s, 1);
+        }
     } else {                                            /* FLAN */
-        int amp = 2 + (dep * (h - 2)) / 127;
-        int wl = 7 + ((127 - spd) * 20) / 127;
-        for (x = 6; x <= 38; x++) {
+        int amp = (dep * 10) / 127;
+        int wl = 6 + ((127 - spd) * 16) / 127;
+        for (x = 4; x <= 40; x++) {
             int idx = ((x * 256 / wl) + dg_st_ph) & 0xff;
             int y = cy - ((sin256[idx] * amp) >> 15);
             DN_FILLRECT(bmp, x, y, x, y, 1);
@@ -627,7 +627,7 @@ static void dg_wave_bars(void *bmp, const char *m, const char *title, int which)
     else
         dg_stereo_gfx(bmp);
     dg_text(bmp, 44 + (82 - dg_strw(m, 2)) / 2, 36, m, 2);
-    DN_TEXTF(bmp, DN_FONT5, 2, 4, -1, "SPD %d DEP %d",
+    DN_TEXTF(bmp, DN_FONT5, which == 0 ? 44 : 2, 4, -1, "SPD %d DEP %d",
              digiwave_speed, digiwave_depth);
     dg_title(bmp, title);
 }
