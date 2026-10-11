@@ -2,7 +2,7 @@
  * digictl: the master-page UI for the DIGI suite.
  * Digitone mk1 / Keys, OS 1.43.
  *
- * Three pages of our own, appended to the master page tree (view kinds 0, 1, 2),
+ * Six pages of our own, appended to the master page tree (view kinds 0..5),
  * rotated with LEFT / RIGHT (or the on-screen < > arrows):
  *
  *   RING  kind 0  E = depth, F = frequency; a centred ring animation, the
@@ -11,6 +11,10 @@
  *                 E/F/G/H = amount; the spiral on the left, the big mode title
  *                 centred, the amount as a vertical slider next to the meter
  *   TILT  kind 2  A = on/off, E = low shelf, H = high shelf; a bent response
+ *   CRUSH kind 3  A = on/off, D = mode (BITS/SR/CRUNCH), E = amount, F = tune
+ *   PITCH kind 4  A = on/off, D = mode (WOB/SHFT), E = speed, F = depth
+ *   STEREO kind 5 A = on/off, D = mode (FLAN/PAN/WIDE), E = speed, F = depth,
+ *                 G = mix, H = feedback
  *
  * The stock top status bar (rows 53..63) is left untouched; our drawing stays
  * below it. None of the stock pages are taken: the pages are reached by FUNC+LFO
@@ -32,8 +36,9 @@
 #define DN_FEKIND     1
 #define DN_EQKIND     2
 #define DN_CRKIND     3
-#define DN_WVKIND     4
-#define DN_NPAGES     5
+#define DN_WVKIND     4            /* WAVE pitch page: WOB / SHFT */
+#define DN_WSKIND     5            /* WAVE stereo page: FLAN / PAN / WIDE */
+#define DN_NPAGES     6
 #define DC_PER_STEP   4
 #define DG_TOP        53            /* rows 53..63 are the stock status bar */
 
@@ -210,7 +215,7 @@ void digictl_cc_apply(int cc, int value)
 }
 
 static const int dc_kinds[DN_NPAGES] = {
-    DN_FXKIND, DN_FEKIND, DN_EQKIND, DN_CRKIND, DN_WVKIND
+    DN_FXKIND, DN_FEKIND, DN_EQKIND, DN_CRKIND, DN_WVKIND, DN_WSKIND
 };
 
 #define DN_MASTER_VT  0x40199BAC
@@ -263,7 +268,7 @@ static void add_page(char *view)
     if (!v || n < 1 || n > 13)
         return;
     for (i = 0; i < n; i++)
-        if (v[i] >= DN_FXKIND && v[i] <= DN_WVKIND)
+        if (v[i] >= DN_FXKIND && v[i] <= DN_WSKIND)
             return;
     pos = n >= 4 ? 3 : n;                   /* after the stock master pages */
     nv = DN_OP_NEW(4u * (unsigned)(n + DN_NPAGES));
@@ -501,28 +506,41 @@ static void dg_crush_page(void *bmp)
     dg_title(bmp, "CRUSH");
 }
 
-/* ---------------- WAVE: big mode name + speed/depth/mix bars ---------------- */
-static const char *dg_wavename(int m)
+/* ---------------- WAVE: two pages over one engine ----------------
+ * kind 4 PITCH (WOB / SHFT), kind 5 STEREO (FLAN / PAN / WIDE). Both edit the
+ * same digiwave_mode; the D encoder cycles within the page's group, so a page
+ * only selects its own modes. The big title shows the engine's current mode. */
+static int dg_wbucket(void)
+{
+    int b = (digiwave_mode * 5) >> 7;
+    return b > 4 ? 4 : b;
+}
+
+static const char *dg_wname(int b)
 {
     static const char *const n[5] = { "WOB", "SHFT", "FLAN", "PAN", "WIDE" };
-    int b = m * 5 / 128;
+    if (b < 0) b = 0;
     if (b > 4) b = 4;
     return n[b];
 }
 
-static void dg_wave_page(void *bmp)
+static void dg_wave_bars(void *bmp, const char *title, int show_mix)
 {
-    const char *m = dg_wavename(digiwave_mode);
+    const char *m = dg_wname(dg_wbucket());
     DN_FILLRECT(bmp, 0, 0, 127, DG_TOP - 1, 0);
     dg_arrows(bmp);
     dg_text(bmp, (128 - dg_strw(m, 2)) / 2, 36, m, 2);
     dg_vbar(bmp, 99, 101, digiwave_speed, 127);
     dg_vbar(bmp, 106, 108, digiwave_depth, 127);
-    dg_vbar(bmp, 113, 115, digiwave_mix, 127);
+    if (show_mix)
+        dg_vbar(bmp, 113, 115, digiwave_mix, 127);
     DN_TEXTF(bmp, DN_FONT5, 2, 4, -1, "SPD %d DEP %d",
              digiwave_speed, digiwave_depth);
-    dg_title(bmp, "WAVE");
+    dg_title(bmp, title);
 }
+
+static void dg_wave_page(void *bmp)  { dg_wave_bars(bmp, "PITCH", 0); }
+static void dg_wave2_page(void *bmp) { dg_wave_bars(bmp, "STEREO", 1); }
 
 /* vtable slot 4 of the master view: draw */
 void digictl_mdraw(void *view, void *bmp)
@@ -543,6 +561,8 @@ void digictl_mdraw(void *view, void *bmp)
         dg_crush_page(bmp);
     else if (k == DN_WVKIND)
         dg_wave_page(bmp);
+    else if (k == DN_WSKIND)
+        dg_wave2_page(bmp);
 }
 
 /* every UI frame: keep the master view redrawing while it is shown, so the
@@ -581,7 +601,7 @@ int digictl_enc(void *brain, void *ev)
         return 0;
     k = cur_kind(dc_view);
     if (k != DN_FXKIND && k != DN_FEKIND && k != DN_EQKIND &&
-        k != DN_CRKIND && k != DN_WVKIND)
+        k != DN_CRKIND && k != DN_WVKIND && k != DN_WSKIND)
         return 0;
     if (!delta)
         return 1;
@@ -613,10 +633,18 @@ int digictl_enc(void *brain, void *ev)
         case 6: digicrush_tune = clampi(digicrush_tune + d, 0, 127); break;
         default: break;
         }
-    } else if (k == DN_WVKIND) {
+    } else if (k == DN_WVKIND || k == DN_WSKIND) {
         switch (id) {
         case 1: digiwave_on = (d > 0); break;
-        case 4: digiwave_mode = clampi(digiwave_mode + d, 0, 127); break;
+        case 4: {                        /* D: cycle within the page's group */
+            int lo = (k == DN_WVKIND) ? 0 : 2;
+            int hi = (k == DN_WVKIND) ? 1 : 4;
+            int b = dg_wbucket();
+            if (b < lo) b = lo;
+            if (b > hi) b = hi;
+            b = clampi(b + d, lo, hi);
+            digiwave_mode = b * 25 + 12;            /* a value in bucket b */
+        } break;
         case 5: digiwave_speed = clampi(digiwave_speed + d, 0, 127); break;
         case 6: digiwave_depth = clampi(digiwave_depth + d, 0, 127); break;
         case 7: digiwave_mix = clampi(digiwave_mix + d, 0, 127); break;

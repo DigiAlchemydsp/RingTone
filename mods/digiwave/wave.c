@@ -244,9 +244,11 @@ void digiwave_render_out(void)
                 int sr0 = a_r + dn_mul15(br[i0 + 1] - a_r, f0);
                 int sl1 = b_l + dn_mul15(bl[i1 + 1] - b_l, f1);
                 int sr1 = b_r + dn_mul15(br[i1 + 1] - b_r, f1);
-                int w0 = wv_win[a0 >> 1], w1 = 32767 - w0;
-                p[0] = dn_mul15(sl0, w0) + dn_mul15(sl1, w1);
-                p[1] = dn_mul15(sr0, w0) + dn_mul15(sr1, w1);
+                int w0 = wv_win[a0 >> 1];
+                /* complementary windows: g0*w0 + g1*(1-w0) = g1 + (g0-g1)*w0,
+                 * so one mul per channel instead of two. */
+                p[0] = sl1 + dn_mul15(sl0 - sl1, w0);
+                p[1] = sr1 + dn_mul15(sr0 - sr1, w0);
                 WV_PUT(0, l);
                 WV_PUT(1, r);
                 wv_w = (wv_w + 1) & WV_MASK;
