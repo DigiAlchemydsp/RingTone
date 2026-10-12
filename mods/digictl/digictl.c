@@ -82,7 +82,7 @@ int digimod_voice = 1;               /* 1..8 */
 #define DN_STORE_VER  7
 #define DN_STORE_MAG(a) ((a)[0] == 0x44 && (a)[1] == 0x47 && \
                          (a)[2] == 0x58 && (a)[3] == 0x31 && \
-                         (a)[5] == DN_STORE_VER)               /* "DGX1" v6 */
+                         (a)[5] == DN_STORE_VER)               /* "DGX1" v7 */
 
 static int *const dn_fxparam[DN_STORE_N] = {
     &digiring_on, &digiring_depth, &digiring_freq,
@@ -142,8 +142,15 @@ static void dn_store_sync(void)
             for (i = 0; i < 8 + 2 * DN_STORE_N; i++)
                 if (b[i] != dn_store_copy[i])
                     break;
-            if (i < 8 + 2 * DN_STORE_N)      /* the OS changed it: adopt */
-                dn_store_read(b);
+            if (i < 8 + 2 * DN_STORE_N) {    /* the block changed: only adopt
+                                              * it if it is still ours. A stock
+                                              * write here must NOT reach our
+                                              * params -- reclaim the block. */
+                if (DN_STORE_MAG(b))
+                    dn_store_read(b);
+                else
+                    dn_store_write(b);
+            }
         }
     } else {
         dn_store_blk = b;                    /* pattern switch / first sync */
@@ -225,7 +232,9 @@ static const int dc_kinds[DN_NPAGES] = {
 #define DN_MASTER_VT  0x40199BAC
 static char *dc_view;               /* the master view, from its last draw */
 static int dc_vis;                  /* frames since the master view was drawn */
-static int dc_eacc[9];              /* per-encoder accumulation, as the OS does */
+static int dc_eacc[10];             /* per-encoder accumulation (ids 0..9), as
+                                     * the OS does -- sized for id 9 too */
+static volatile unsigned dc_out;    /* output half, for the ceiling stage */
 
 static int clampi(int v, int lo, int hi)
 {
@@ -238,7 +247,10 @@ static int clampi(int v, int lo, int hi)
 void digictl_mod_in(void)
 {
     int idx, d = digimod_dest, v = digimod_voice;
-    if (v < 1 || v > 8 || d <= 0)
+    dc_out = dn_out_off();               /* the half this block writes */
+    /* The track-LFO bridge is parked: it only drives a param when explicitly
+     * enabled (digimod_dest 1..5). A stock OS event never sets it. */
+    if (v < 1 || v > 8 || d < 1 || d > 5)
         return;
     idx = clampi(DN_FREQ_REC(v) >> 8, 0, 127);
     switch (d) {
@@ -248,6 +260,34 @@ void digictl_mod_in(void)
     case 4: digieq_lo = idx; break;
     case 5: digieq_hi = idx; break;
     default: break;
+    }
+}
+
+/* Output ceiling (last stage, order 64): keep the master mix below the 24-bit
+ * full scale so a hot flanger-feedback / pitch-shift / drive setting can never
+ * reach hard clipping. Soft knee at ~-2.5 dBFS, asymptotic max ~-0.7 dBFS, and
+ * an absolute clamp well below 0x7fffff. Transparent for normal levels. */
+#define DN_LIM_KNEE 0x600000
+#define DN_LIM_MAX  0x740000
+static inline int dn_lmt(int x)
+{
+    int s = x < 0 ? -1 : 1;
+    int a = x < 0 ? -x : x;
+    if (a > DN_LIM_KNEE) {
+        a = DN_LIM_KNEE + ((a - DN_LIM_KNEE) >> 1);
+        if (a > DN_LIM_MAX) a = DN_LIM_MAX;
+    }
+    return s * a;
+}
+
+void digictl_limit_out(void)
+{
+    int *p = (int *)(DN_OUT_BASE + dc_out);
+    int i;
+    for (i = 0; i < DN_OUT_FRAMES; i++) {
+        p[0] = dn_lmt(p[0]);
+        p[1] = dn_lmt(p[1]);
+        p += 2;
     }
 }
 
@@ -690,6 +730,8 @@ int digictl_enc(void *brain, void *ev)
     int delta = *(int *)((char *)ev + 16);
     int k, d;
     (void)brain;
+    if (id < 0 || id > 9)
+        return 0;                        /* not one of our encoders: pass on */
     if (!master_live(dc_view))
         return 0;
     k = cur_kind(dc_view);

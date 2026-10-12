@@ -52,6 +52,7 @@ static unsigned wv_phase;       /* LFO phase, Q32 */
 static int wv_wob_wet;
 static int wv_fla_mix;
 static int wv_shf_wet;
+static int wv_shf_dep = 64;     /* ramped SHFT ratio index (glide) */
 static int wv_pan_dep;
 static int wv_wide_cur = 64;
 
@@ -204,10 +205,18 @@ void digiwave_render_out(void)
                      ((WV_N << 16) - 1);
                 wl = wv_read(wv_buf[0], rp);
                 wr = wv_read(wv_buf[1], rp);
+                int fl, fr;
                 p[0] = l + dn_mul15(wl - l, m);
                 p[1] = r + dn_mul15(wr - r, m);
-                WV_PUT(0, l + dn_mul15(wl, fb));
-                WV_PUT(1, r + dn_mul15(wr, fb));
+                fl = l + dn_mul15(wl, fb);              /* clamp feedback so it
+                                                         * cannot run away */
+                fr = r + dn_mul15(wr, fb);
+                if (fl > 0x700000) fl = 0x700000;
+                else if (fl < -0x700000) fl = -0x700000;
+                if (fr > 0x700000) fr = 0x700000;
+                else if (fr < -0x700000) fr = -0x700000;
+                WV_PUT(0, fl);
+                WV_PUT(1, fr);
                 wv_w = (wv_w + 1) & WV_MASK;
                 l0 += lstep;
                 m += mstep;
@@ -217,13 +226,15 @@ void digiwave_render_out(void)
         } else if (mode == WV_SHF) {
             const int *bl = wv_buf[0], *br = wv_buf[1];
             unsigned r0, r1, inc2;
-            int a0, a1;
+            int a0, a1, ed;
             int w = wv_shf_wet;
-            int w_t = (on && depth != 64) ? 32767 : 0;  /* neutral = dry */
-            int wstep;
+            int w_t, wstep;
+            wv_shf_dep += (depth - wv_shf_dep) >> 5;    /* glide the ratio */
+            ed = wv_shf_dep < 0 ? 0 : wv_shf_dep > 127 ? 127 : wv_shf_dep;
+            w_t = (on && ed != 64) ? 32767 : 0;         /* neutral = dry */
             if (w_t == 0 && w == 0) { wv_primed = 0; return; }
             wstep = (w_t - w) >> 5;
-            inc2 = (unsigned)wv_ratio[depth];
+            inc2 = (unsigned)wv_ratio[ed];
             if (!wv_primed) {
                 r0 = r1 = ((wv_w + WV_N - WV_LEAD) & WV_MASK) << 16;
                 a0 = 0;

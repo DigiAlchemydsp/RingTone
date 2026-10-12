@@ -1,6 +1,6 @@
 {
  "id": "tonefx",
- "version": "3.1h",
+ "version": "3.1i",
  "title": "Tone+FX",
  "category": "Sound",
  "author": "Digital Alchemy DSP",
@@ -46,6 +46,7 @@
   {"event": "ev_render_out", "fn": "digicrush_render_out",   "order": 57},
   {"event": "ev_render_out", "fn": "digifold_render_out",    "order": 60},
   {"event": "ev_render_out", "fn": "digiwave_render_out",    "order": 62},
+  {"event": "ev_render_out", "fn": "digictl_limit_out",      "order": 64},
   {"event": "ev_render_out", "fn": "digimeter_render_out",   "order": 65},
   {"event": "ev_tick",       "fn": "digictl_tick",          "order": 40},
   {"event": "ev_tick",       "fn": "digimeter_tick",        "order": 60},

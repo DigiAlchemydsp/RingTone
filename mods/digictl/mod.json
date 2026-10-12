@@ -17,7 +17,8 @@
   {"event": "ev_tick",      "fn": "digictl_tick",  "order": 40},
   {"event": "ev_enc",       "fn": "digictl_enc",   "order": 40},
   {"event": "ev_key",       "fn": "digictl_key",   "order": 40},
-  {"event": "ev_render_in", "fn": "digictl_mod_in","order": 40}
+  {"event": "ev_render_in",  "fn": "digictl_mod_in",   "order": 40},
+  {"event": "ev_render_out", "fn": "digictl_limit_out","order": 64}
  ],
  "requires": ["core", "digieq", "digiring", "digifold", "digimeter", "digicrush", "digiwave"],
  "resources": {"names": ["ui:master page DIGI RING"]}
