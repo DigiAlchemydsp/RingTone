@@ -2,7 +2,7 @@
  * digictl: the master-page UI for the DIGI suite.
  * Digitone mk1 / Keys, OS 1.43.
  *
- * Six pages of our own, appended to the master page tree (view kinds 0..5),
+ * Seven pages of our own, appended to the master page tree (view kinds 0..6),
  * rotated with LEFT / RIGHT (or the on-screen < > arrows):
  *
  *   RING  kind 0  E = depth, F = frequency; a centred ring animation, the
@@ -16,16 +16,17 @@
  *   STEREO kind 5 A = on/off, D = mode (FLAN/PAN/WIDE), E = speed, F = depth,
  *                 G = mix, H = feedback
  *   PERF  kind 6  the static performance page: no animation, one depth per FX
- *                 block on the encoders (A ring depth, B fold amount, C crush
+ *                 engine on the encoders (A ring depth, B fold amount, C crush
  *                 amount, D wave pitch depth, E wave stereo depth, F EQ low,
  *                 G EQ high, H wave speed). Reached by pressing UP on any of the
  *                 six pages; UP again returns. The 16 trigs are momentary
- *                 performance pads, four blocks of four intensities (1 2 9 10
- *                 ring, 3 4 11 12 fold/crush, 5 6 13 14 pitch, 7 8 15 16 pan):
- *                 a held trig ramps its block's depth up (and turns it on),
+ *                 performance pads, now one block per engine (1 2 9 10 ring,
+ *                 3 4 fold, 11 12 crush, 5 6 13 14 pitch, 7 8 15 16 stereo):
+ *                 a held trig ramps its engine's depth up (and turns it on),
  *                 holding at the intensity target, and restores the saved
  *                 pattern value on release. The store is never dirtied by the
- *                 pads, so the pattern value is the floor.
+ *                 pads, so the pattern value is the floor. The WAVE engine has
+ *                 its own PITCH and STEREO depths, so the two pads never fight.
  *
  * The stock top status bar (rows 53..63) is left untouched; our drawing stays
  * below it. None of the stock pages are taken: the pages are reached by FUNC+LFO
@@ -68,7 +69,8 @@ extern int digifold_on, digifold_amount, digifold_mode;
 extern int digimeter_on, digimeter_l, digimeter_r;
 extern int digicrush_on, digicrush_mode, digicrush_amount, digicrush_tune;
 extern int digiwave_on, digiwave_pmode, digiwave_smode, digiwave_page;
-extern int digiwave_speed, digiwave_depth, digiwave_mix, digiwave_fb;
+extern int digiwave_speed, digiwave_pdepth, digiwave_sdepth;
+extern int digiwave_mix, digiwave_fb;
 
 /* Track-LFO bridge. A track LFO can target the track's FLTR FREQ; that live
  * value is in the per-voice record at 0x80003544 + (voice-1)*0x9E, FREQ at +0
@@ -93,11 +95,11 @@ int digimod_voice = 1;               /* 1..8 */
 #define DN_PAT_STRIDE 0x1611Du
 #define DN_PAT_SLOTS  128u
 #define DN_STORE_OFF  0x1040u
-#define DN_STORE_N    24
-#define DN_STORE_VER  7
+#define DN_STORE_N    25
+#define DN_STORE_VER  8
 #define DN_STORE_MAG(a) ((a)[0] == 0x44 && (a)[1] == 0x47 && \
                          (a)[2] == 0x58 && (a)[3] == 0x31 && \
-                         (a)[5] == DN_STORE_VER)               /* "DGX1" v7 */
+                         (a)[5] == DN_STORE_VER)               /* "DGX1" v8 */
 
 static int *const dn_fxparam[DN_STORE_N] = {
     &digiring_on, &digiring_depth, &digiring_freq,
@@ -106,7 +108,8 @@ static int *const dn_fxparam[DN_STORE_N] = {
     &digimeter_on, &digimod_dest, &digimod_voice,
     &digicrush_on, &digicrush_mode, &digicrush_amount, &digicrush_tune,
     &digiwave_on, &digiwave_pmode, &digiwave_smode, &digiwave_page,
-    &digiwave_speed, &digiwave_depth, &digiwave_mix, &digiwave_fb,
+    &digiwave_speed, &digiwave_pdepth, &digiwave_sdepth,
+    &digiwave_mix, &digiwave_fb,
 };
 
 static unsigned char *dn_store_blk;             /* block we last synced */
@@ -232,7 +235,8 @@ void digictl_cc_apply(int cc, int value)
     case DN_CC_WV_SMODE:   digiwave_smode = v; digiwave_page = 1; break;
     case DN_CC_WV_PAGE:    digiwave_page = (v >= 64); break;
     case DN_CC_WV_SPD:     digiwave_speed = v; break;
-    case DN_CC_WV_DEP:     digiwave_depth = v; break;
+    case DN_CC_WV_DEP:     if (digiwave_page) digiwave_sdepth = v;
+                           else digiwave_pdepth = v; break;
     case DN_CC_WV_MIX:     digiwave_mix = v; break;
     case DN_CC_WV_FB:      digiwave_fb = v; break;
     default: return;                 /* not ours: stock handles/ignores it */
@@ -241,35 +245,42 @@ void digictl_cc_apply(int cc, int value)
 }
 
 /* ---- PERFORM page: static depths + momentary trig pads -----------------------
- * The 16 trigs are performance pads in four blocks; each block has four pads of
- * increasing intensity. A held pad saves the block's depth (and on/off), turns
- * the block on, and ramps the depth up to the intensity target (base + 1/4..4/4
- * of the way to 127), where it holds. Releasing it ramps back to the saved
- * value and restores the on/off. This never touches the per-pattern store, so
- * the saved value is always the resting position.
+ * The 16 trigs are performance pads in five blocks, each pad with an intensity
+ * (a block of four pads has 1..4, a block of two has 2,4). A held pad saves the
+ * block's depth (and on/off), turns the block on, and ramps the depth up to the
+ * intensity target (base + intensity/4 of the way to 127), where it holds.
+ * Releasing it ramps back to the saved value and restores the on/off. This
+ * never touches the per-pattern store, so the saved value is the resting
+ * position.
+ *
+ * Each engine has its OWN depth: fold and crush are separate, and the WAVE
+ * engine now has a PITCH depth and a STEREO depth (digiwave_pdepth / _sdepth),
+ * so the pitch and stereo pads no longer fight over one value.
  *
  * The ramp runs in ev_render_in (audio context, 1500 Hz), one cheap step per
  * block, and only while a pad or its release ramp is active -- with no pad held
  * it costs a single flag test. */
-#define PF_N 4
+#define PF_N 5
 static const unsigned char pf_trig_block[16] = {
-    0, 0, 1, 1, 2, 2, 3, 3, 0, 0, 1, 1, 2, 2, 3, 3
+    0, 0, 1, 1, 3, 3, 4, 4, 0, 0, 2, 2, 3, 3, 4, 4
 };
 static const unsigned char pf_trig_inten[16] = {
-    1, 2, 1, 2, 1, 2, 1, 2, 3, 4, 3, 4, 3, 4, 3, 4
+    1, 2, 2, 4, 1, 2, 1, 2, 3, 4, 2, 4, 3, 4, 3, 4
 };
 /* block -> its params (index -1 = none) */
-static const signed char pf_block_params[4][2] = {
+static const signed char pf_block_params[5][2] = {
     { 0, -1 },          /* ring: depth */
-    { 1,  2 },          /* fold + crush: amount each */
-    { 3, -1 },          /* pitch: wave depth (PITCH group) */
-    { 3, -1 },          /* pan: wave depth (STEREO group) */
+    { 1, -1 },          /* fold: amount */
+    { 2, -1 },          /* crush: amount */
+    { 3, -1 },          /* pitch: wave PITCH depth */
+    { 4, -1 },          /* stereo: wave STEREO depth */
 };
 static int *const pf_param[PF_N] = {
-    &digiring_depth, &digifold_amount, &digicrush_amount, &digiwave_depth
+    &digiring_depth, &digifold_amount, &digicrush_amount,
+    &digiwave_pdepth, &digiwave_sdepth
 };
 static int *const pf_onflag[PF_N] = {
-    &digiring_on, &digifold_on, &digicrush_on, &digiwave_on
+    &digiring_on, &digifold_on, &digicrush_on, &digiwave_on, &digiwave_on
 };
 
 static volatile unsigned pf_holdmask[PF_N];     /* pads currently holding */
@@ -302,10 +313,10 @@ static void pf_trig_down(int t)
             pf_tgt[p] = tgt;
         pf_active[p] = 1;
     }
-    if (b == 2)
+    if (b == 3)
         digiwave_page = 0;                      /* pitch pad uses the PITCH group */
-    else if (b == 3)
-        digiwave_page = 1;                      /* pan pad uses the STEREO group */
+    else if (b == 4)
+        digiwave_page = 1;                      /* stereo pad uses the STEREO group */
     pf_running = 1;
 }
 
@@ -747,7 +758,7 @@ static const char *dg_sname(void)          /* STEREO page's own mode */
 static int dg_pi_ph;
 static void dg_pitch_gfx(void *bmp)
 {
-    int dep = digiwave_depth, spd = digiwave_speed;
+    int dep = digiwave_pdepth, spd = digiwave_speed;
     int c1 = 15, c2 = 29;                           /* the two lines */
     int amp = (dep * 14) / 127;                     /* 0 -> straight */
     int k = 1 + (spd * 5) / 127;                    /* nodes 1..6 */
@@ -770,7 +781,7 @@ static int dg_st_ph;
 static void dg_stereo_gfx(void *bmp)
 {
     int mode = digiwave_smode * 3 / 128;
-    int dep = digiwave_depth, spd = digiwave_speed;
+    int dep = digiwave_sdepth, spd = digiwave_speed;
     int cy = 26, x;
     if (mode > 2) mode = 2;
     dg_st_ph += 2 + (spd >> 3);
@@ -808,7 +819,7 @@ static void dg_wave_bars(void *bmp, const char *m, const char *title, int which)
         dg_stereo_gfx(bmp);
     dg_text(bmp, 44 + (82 - dg_strw(m, 2)) / 2, 36, m, 2);
     DN_TEXTF(bmp, DN_FONT5, which == 0 ? 44 : 2, 4, -1, "SPD %d DEP %d",
-             digiwave_speed, digiwave_depth);
+             digiwave_speed, which == 0 ? digiwave_pdepth : digiwave_sdepth);
     dg_title(bmp, title);
 }
 
@@ -823,8 +834,8 @@ static const char *const dg_pflbl[8] = {
     "A RNG", "B FLD", "C CRS", "D PIT", "E STE", "F LO", "G HI", "H SPD"
 };
 static int *const dg_pfval[8] = {
-    &digiring_depth, &digifold_amount, &digicrush_amount, &digiwave_depth,
-    &digiwave_depth, &digieq_lo, &digieq_hi, &digiwave_speed
+    &digiring_depth, &digifold_amount, &digicrush_amount, &digiwave_pdepth,
+    &digiwave_sdepth, &digieq_lo, &digieq_hi, &digiwave_speed
 };
 
 static void dg_perf_page(void *bmp)
@@ -947,7 +958,7 @@ int digictl_enc(void *brain, void *ev)
             digiwave_pmode = b * 64 + 32;
         } break;
         case 5: digiwave_speed = clampi(digiwave_speed + d, 0, 127); break;
-        case 6: digiwave_depth = clampi(digiwave_depth + d, 0, 127); break;
+        case 6: digiwave_pdepth = clampi(digiwave_pdepth + d, 0, 127); break;
         default: break;
         }
     } else if (k == DN_WSKIND) {             /* STEREO: FLAN / PAN / WIDE */
@@ -961,7 +972,7 @@ int digictl_enc(void *brain, void *ev)
             digiwave_smode = b * 43 + 21;
         } break;
         case 5: digiwave_speed = clampi(digiwave_speed + d, 0, 127); break;
-        case 6: digiwave_depth = clampi(digiwave_depth + d, 0, 127); break;
+        case 6: digiwave_sdepth = clampi(digiwave_sdepth + d, 0, 127); break;
         case 7: digiwave_mix = clampi(digiwave_mix + d, 0, 127); break;
         case 8: digiwave_fb = clampi(digiwave_fb + d, 0, 127); break;
         default: break;
@@ -972,9 +983,9 @@ int digictl_enc(void *brain, void *ev)
         case 2: digifold_amount = clampi(digifold_amount + d, 0, 127); break;
         case 3: digicrush_amount = clampi(digicrush_amount + d, 0, 127); break;
         case 4: digiwave_page = 0;        /* D: the PITCH group's depth */
-                digiwave_depth = clampi(digiwave_depth + d, 0, 127); break;
+                digiwave_pdepth = clampi(digiwave_pdepth + d, 0, 127); break;
         case 5: digiwave_page = 1;        /* E: the STEREO group's depth */
-                digiwave_depth = clampi(digiwave_depth + d, 0, 127); break;
+                digiwave_sdepth = clampi(digiwave_sdepth + d, 0, 127); break;
         case 6: digieq_lo = clampi(digieq_lo + d, 0, 127); break;
         case 7: digieq_hi = clampi(digieq_hi + d, 0, 127); break;
         case 8: digiwave_speed = clampi(digiwave_speed + d, 0, 127); break;

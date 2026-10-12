@@ -24,7 +24,8 @@ int digiwave_pmode = 0;         /* PITCH page: 0..127 -> WOB / SHFT */
 int digiwave_smode = 0;         /* STEREO page: 0..127 -> FLAN / PAN / WIDE */
 int digiwave_page = 0;          /* active group: 0 PITCH, 1 STEREO */
 int digiwave_speed = 40;        /* LFO rate */
-int digiwave_depth = 64;        /* wobble/sweep/pan depth, semitones, or width */
+int digiwave_pdepth = 64;       /* PITCH page depth (wobble / semitones) */
+int digiwave_sdepth = 64;       /* STEREO page depth (sweep / pan / width) */
 int digiwave_mix = 64;          /* wet mix (FLAN) */
 int digiwave_fb = 0;            /* flanger feedback (capped at 75%) */
 
@@ -138,7 +139,7 @@ void digiwave_render_out(void)
 {
     int *p, i;
     int mode;
-    int depth = digiwave_depth;
+    int depth = digiwave_page ? digiwave_sdepth : digiwave_pdepth;
     int on = digiwave_on ? 1 : 0;
 
     if (digiwave_page) {                        /* STEREO group */

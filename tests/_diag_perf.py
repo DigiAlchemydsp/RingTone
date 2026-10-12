@@ -93,7 +93,7 @@ def main():
 
     # live mod globals: read the patch's symbol map (testout/*.map.json)
     mp = os.path.join(os.path.dirname(__file__), "..", "testout",
-                      "test-3.2a.syx.map.json")
+                      "test-3.2b.syx.map.json")
     sym = json.load(open(mp))
     G_DEPTH = int(sym["digiring_depth"], 16)
     G_FOLD = int(sym["digifold_amount"], 16)

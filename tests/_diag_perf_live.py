@@ -12,7 +12,7 @@ import argparse, json, os, struct, sys, time
 DIGIEMU = os.environ.get("DIGIEMU", r"C:\Users\benan\Music\ELEKTRON\digiemu-main")
 VT_MASTER = 0x40199BAC
 WIRE = {1: (0, 2), 15: (3, 5), 17: (4, 3), 18: (3, 6), 25: (2, 7),
-        26: (3, 1), 27: (4, 0), 28: (5, 3)}
+        26: (3, 1), 27: (4, 0), 28: (5, 3), 30: (5, 5), 36: (6, 0), 40: (6, 4)}
 
 
 class StubOut:
@@ -73,8 +73,12 @@ def main():
     uc = emu._uc
 
     sym = json.load(open(os.path.join(os.path.dirname(__file__), "..", "testout",
-                                      "test-3.2a.syx.map.json")))
+                                      "test-3.2b.syx.map.json")))
     G_DEPTH = int(sym["digiring_depth"], 16)
+    G_FOLD = int(sym["digifold_amount"], 16)
+    G_CON = int(sym["digicrush_amount"], 16)
+    G_PDEP = int(sym["digiwave_pdepth"], 16)
+    G_SDEP = int(sym["digiwave_sdepth"], 16)
 
     def rd(addr, n=4):
         return int.from_bytes(bytes(uc.mem_read(addr, n)), "big")
@@ -136,16 +140,42 @@ def main():
     assert hi > base, "pad did not raise the depth"
     assert back == base, "release did not restore the depth"
 
-    hold(28)                                 # trig 3: fold/crush, intensity 1
-    G_FOLD = int(sym["digifold_amount"], 16)
-    G_CON = int(sym["digicrush_amount"], 16)
-    fb = rd(G_FOLD)
+    # trig 3 alone moves FOLD, not CRUSH
+    fold0, con0 = rd(G_FOLD), rd(G_CON)
+    hold(28)
     time.sleep(0.5)
-    print("holding trig3: fold %d -> %d, crush -> %d" %
-          (fb, rd(G_FOLD), rd(G_CON)))
-    rel(28)
-    time.sleep(0.4)
-    print("released trig3: fold -> %d, crush -> %d" % (rd(G_FOLD), rd(G_CON)))
+    print("holding trig3: fold %d -> %d, crush %d -> %d" %
+          (fold0, rd(G_FOLD), con0, rd(G_CON)))
+    assert rd(G_FOLD) > fold0, "fold pad did not raise fold"
+    assert rd(G_CON) == con0, "fold pad moved crush"
+    rel(28); time.sleep(0.5)
+
+    # trig 11 alone moves CRUSH, not FOLD
+    hold(36)
+    time.sleep(0.5)
+    print("holding trig11: crush %d -> %d, fold -> %d" %
+          (con0, rd(G_CON), rd(G_FOLD)))
+    assert rd(G_CON) > con0, "crush pad did not raise crush"
+    assert rd(G_FOLD) == fold0, "crush pad moved fold"
+    rel(36); time.sleep(0.5)
+
+    # trig 5 (pitch) and trig 15 (stereo) are independent depths
+    pd0, sd0 = rd(G_PDEP), rd(G_SDEP)
+    hold(30)                                 # trig 5: pitch
+    time.sleep(0.5)
+    print("holding trig5: pitch depth %d -> %d, stereo -> %d" %
+          (pd0, rd(G_PDEP), rd(G_SDEP)))
+    assert rd(G_PDEP) > pd0, "pitch pad did not raise the pitch depth"
+    assert rd(G_SDEP) == sd0, "pitch pad moved the stereo depth"
+    rel(30); time.sleep(0.5)
+
+    hold(40)                                 # trig 15: stereo
+    time.sleep(0.5)
+    print("holding trig15: stereo depth %d -> %d, pitch -> %d" %
+          (sd0, rd(G_SDEP), rd(G_PDEP)))
+    assert rd(G_SDEP) > sd0, "stereo pad did not raise the stereo depth"
+    assert rd(G_PDEP) == pd0, "stereo pad moved the pitch depth"
+    rel(40); time.sleep(0.5)
 
     emu.stop_flag.set(); emu.join(20)
     print("PASS")

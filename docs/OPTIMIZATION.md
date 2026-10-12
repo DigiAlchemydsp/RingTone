@@ -5,7 +5,7 @@ optimization methods used (and why), what is repurposed from the stock OS and
 from RingTone, and the RAM / flash / headroom ledger. This is the technical
 companion to `HANDOFF.md`; `DSP.md` is the address/architecture reference.
 
-Current package: `tonefx 3.2a` (`.run 22596`, `.bss 25366`).
+Current package: `tonefx 3.2b` (`.run 22722`, `.bss 25390`).
 
 ## 1. Where the code runs
 
@@ -175,10 +175,12 @@ Ordered roughly by how much they bought.
     once, run the stages inline, store once) is the next big win — see §8.
 16. **PERFORM page: static draw + cheap momentary pads.** The page (kind 6,
     reached with UP) has no animated graphics — the same pixels every frame.
-    Its 16 trigs are momentary pads that ramp a block's depth in `ev_render_in`
-    (`pf_apply`), one step per block, and restore the pattern value on release.
-    It costs a single flag test when idle, writes no store, and the ramp is a
-    handful of integer ops only while a pad (or its release) is live.
+    Its 16 trigs are momentary pads, one block per engine that ramp the engine's
+    depth in `ev_render_in` (`pf_apply`), one step per block, and restore the
+    pattern value on release. It costs a single flag test when idle, writes no
+    store, and the ramp is a handful of integer ops only while a pad (or its
+    release) is live. Each engine has its own depth: fold/crush are separate and
+    the WAVE engine has independent PITCH / STEREO depths.
 
 ## 5. Repurposed / reused
 
@@ -193,7 +195,7 @@ Ordered roughly by how much they bought.
 - **The unused MIDI-track 64-byte block.** Each pattern's four MIDI tracks
   leave `track+0x100` zero in all 128 slots and the OS never writes it;
   `digictl` uses `pattern+0x1040` for the **"DGX1"** per-pattern store
-  (`v7`, 24 int16, 56 of 64 bytes).
+  (`v8`, 25 int16, 58 of 64 bytes).
 - **The parked LFO bridge** (`digimod_dest`/`digimod_voice`, per-voice FLTR
   FREQ read at `0x80003544`) is kept in the store but has no page yet.
 - **The stock CC router** (`0x400ED94E`) is hooked once (`cc_glue.s`, `op:"jmp"`)
@@ -205,17 +207,17 @@ Ordered roughly by how much they bought.
 - **`build.py` size reporting / the linker** reports `imports nothing`, which is
   what keeps the no-libc build honest.
 
-## 6. Footprint / headroom ledger (3.2a)
+## 6. Footprint / headroom ledger (3.2b)
 
 | item | value |
 |---|---|
-| `.run` (code + rodata) | 22,596 B |
-| `.bss` (RAM state) | 25,366 B |
+| `.run` (code + rodata) | 22,722 B |
+| `.bss` (RAM state) | 25,390 B |
 | — of which `digiwave` delay line | 2048 × 2 × 4 = 16,384 B (+8 guard) |
 | — of which tables (`sin256`, `wv_ratio`, `wv_win`) | ~1,024 + 512 + 512 B (`.run`) |
 | **RAM spare** | **~86 KB of 128 KB** |
-| flash spare (3.2a patch) | ≈1.69 MB |
-| sites / relocations | 11 / 633; imports nothing |
+| flash spare (3.2b patch) | ≈1.69 MB |
+| sites / relocations | 11 / 646; imports nothing |
 
 Budgets: `.run`+`.bss` share 128 KB across every linked mod; the delay line is
 the single largest allocation. If it ever needs to grow, the `bulk` region
@@ -229,8 +231,9 @@ digiemu boot/settle (`dsp_running=2`), all six FX pages present
 (`kinds=[16,15,17,0,1,2,3,4,5]`) and the PERFORM page (kind 6,
 `kinds=[16,15,17,0,1,2,3,4,5,6]`), hardware boot + first manual pass working.
 The PERFORM page is verified live (real SSI renders): UP enters it, an encoder
-raises the pattern value, a held trig ramps its block up (ring 51→70,
-fold/crush 0→31) and release restores the pattern value.
+raises the pattern value, and each engine's pads move only their own depth and
+restore on release (ring 51→70→51; fold 0→63; crush 0→63; WAVE pitch 64→79;
+WAVE stereo 64→111, with the other depth unchanged). Store v8 round-trips.
 
 Pending:
 - **CPU headroom** — render-vector worst/p99 cycles and deadline margin
