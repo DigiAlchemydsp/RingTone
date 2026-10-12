@@ -1,16 +1,15 @@
 # Per-pattern storage for the DIGI FX params (Digitone mk1, OS 1.43)
 
 Status: **implemented (digictl 2.0, shipped in the merged `tonefx` mod),
-verified in digiemu.** The FX parameters save and reload with the pattern,
-like stock parameters, instead of living only in the mod's `.bss`.
+verified in digiemu.** The FX parameters save and reload with the pattern, like
+stock parameters, instead of living only in the mod's `.bss`.
 
 ## The problem
 
-The DIGI FX parameters (`digiring_*`, `digieq_*`, `digifold_*`,
-`digimeter_on`, `digimod_*`, `digicrush_*`, `digiwave_*`) are C globals in the
-mods' `.bss` (RAM
-`0x47BE0000-0x47C00000`). That region is cleared at boot, so the settings were
-lost at power-off and did not change with the pattern.
+The DIGI FX parameters (`digiring_*`, `digieq_*`, `digifold_*`, `digimeter_on`,
+`digimod_*`, `digicrush_*`, `digiwave_*`) are C globals in the mods' `.bss` (RAM
+`0x47BE0000-0x47C00000`). That region is cleared at boot, so the settings would
+be lost at power-off and would not change with the pattern.
 
 ## The pattern store (measured)
 
@@ -35,65 +34,63 @@ Each `track_t` record is `0x3D0` bytes (8 tracks: 4 synth at `t=0..3`, 4 MIDI
 at `t=4..7`). Every track has a 64-byte area at `track_t + 0x100`:
 
 - **synth tracks** use it (voice/sound data — nonzero);
-- **MIDI tracks** leave it **zero in all 128 slots** (measured) and the OS's
-  parameter mirror never writes it: poking a marker there survived a FILTER
-  knob edit (which runs the live→storage mirror).
-
-So `pattern + 0x1040` (MIDI track 0's block) is a safe, saved, 64-byte scratch
-per pattern.
+- **MIDI tracks** were measured **zero in all 128 slots**, and the OS's
+  parameter mirror never wrote it, so `pattern + 0x1040` (MIDI track 0's block)
+  is a safe, saved, 64-byte scratch per pattern.
 
 ## The layout
 
-`digictl` keeps 22 parameters there (8 + 2*22 = 52 bytes of the 64):
+`digictl` keeps **24 parameters** there (8 + 2*24 = 56 of the 64 bytes):
 
 ```
 +0..3   "DGX1" magic
-+4..5   version (6: adds CRUSH + WAVE)
-+6..7   count (22)
-+8..   22 x int16, big-endian, in DN_STORE order
++4..5   version (7)
++6..7   count (24)
++8..    24 x int16, big-endian, in DN_STORE order
 ```
 
-The 22 params are ring (on, depth, rate), EQ (low on, high on, low, high),
-fold (on, amount), meter (on), the LFO bridge (dest, voice), **crush** (on,
-mode, amount, tune) and **wave** (on, mode, speed, depth, mix, fb). Version 3
-dropped the earlier per-voice-filter params; version 6 added CRUSH/WAVE. An
-older block (version 2 or 5) fails the magic check and is treated as a fresh
-pattern, so it starts from the live values.
+The 24 params are ring (on, depth, rate), EQ (on, lo, hi), fold (on, amount,
+mode), meter (on), the parked LFO bridge (dest, voice), **crush** (on, mode,
+amount, tune) and **wave** (on, pmode, smode, page, speed, depth, mix, fb).
+Older versions: 3 dropped the per-voice-filter params, 6 added CRUSH/WAVE,
+7 added the split WAVE page/mode params. An older block fails the magic check
+and is treated as a fresh pattern, so it starts from the live values.
+
+## The sync and the adopt guard
 
 `ev_tick` (one UI frame) runs `dn_store_sync()`:
 
 - **new pattern pointer** (switch / first sync): if the magic is present, load
   the block into the globals; otherwise write the globals (a fresh pattern
   adopts the live values);
-- **a page edit** (`dn_store_dirty`, set by every encoder/key branch): write the
-  globals into the block;
-- **the block changed behind us** (e.g. a pattern reload): load it.
+- **a page edit** (`dn_store_dirty`, set by every encoder/key/CC branch): write
+  the globals into the block;
+- **the block changed behind us**: adopt it **only if it still carries the
+  `"DGX1"` magic** (a genuine pattern reload the OS rewrote). If the magic is
+  gone, a **stock write** landed in that memory — reclaim our block instead of
+  reading it. This guard is what stops a stock OS event (a PAGE press, a MIDI
+  action, …) from jumping our parameters.
 
 Because the block is part of the saved pattern struct, the values follow a
 pattern switch / reload and travel with a project save, exactly like stock
-parameters. New patterns (no magic) start from whatever the mods currently
-hold, so the sound never jumps.
+parameters. New patterns (no magic) start from whatever the mods currently hold,
+so the sound never jumps.
 
 ## Verified in digiemu
 
-Firmware `dn1-2.1z-d2535be9` (core-dn1-2.0a + the six suite mods, digictl 1.4):
-
-- at boot the current pattern's block holds `DGX1` + the mod defaults
-  (ring depth 51, EQ low 33, filter freq 64, …);
-- editing a global + mark-dirty makes the tick write it to the block;
-- poking the block makes the tick adopt it into the globals (the reload path);
-- switching to pattern 2 gives a second block (own values); switching back
-  restores pattern 1's values.
+`dn1-3.1i` (core-dn1-2.0a + the merged suite, digictl 2.0): at boot the current
+pattern's block holds `"DGX1"` v7 + the defaults; editing a global writes it on
+the tick; poking the block with a valid magic reloads it; a non-DGX1 write is
+ignored/reclaimed (the stock-event guard).
 
 ## Risks / open items
 
-- The MIDI-track block is assumed never to be used by the firmware; it was zero
-  across all 128 slots and untouched by the parameter mirror, but a configured
-  MIDI track was not exercised. If it is ever reused, move the store to another
-  zero run (the other three MIDI blocks `+0x1410`, `+0x17E0`, `+0x1BB0`, or the
-  81-byte runs at `+0x0E7BA`/`+0x11009`/`+0x13858`/`+0x160A7`).
-- Power-off persistence relies on the OS saving the pattern struct (auto-save
-  of the temp project); not yet confirmed on hardware.
-- The store is per pattern, not the "reload pattern" backup the OS may keep in
-  a separate copy; the external-change adoption covers a reload that rewrites
-  the struct.
+- The MIDI-track block was measured on **unconfigured** tracks. A *configured*
+  MIDI track may write there. The 3.1i magic guard prevents a jumped param, but
+  if a clash is found, move the store to another zero run (the other three MIDI
+  blocks `+0x1410`, `+0x17E0`, `+0x1BB0`, or the 81-byte runs at
+  `+0x0E7BA`/`+0x11009`/`+0x13858`/`+0x160A7`).
+- Power-off persistence relies on the OS saving the pattern struct (auto-save of
+  the temp project); confirmed per-pattern in digiemu, not yet on hardware.
+- The store is per pattern, not the "reload pattern" backup the OS may keep in a
+  separate copy; the adopt guard covers a reload that rewrites the struct.

@@ -1,9 +1,9 @@
 # DIGI MIDI CC control (Digitone mk1, OS 1.43)
 
 Status: **implemented (digictl 2.0), verified in digiemu (hook path).** The
-RING / FOLD / TILT parameters respond to **incoming MIDI Control Change**
-messages, like the stock internal parameters, so they can be played and
-sequenced from an external controller/DAW.
+RING / FOLD / TILT / CRUSH / PITCH / STEREO parameters respond to **incoming
+MIDI Control Change** messages, like the stock internal parameters, so they can
+be played and sequenced from an external controller/DAW.
 
 ## How it is hooked
 
@@ -23,7 +23,10 @@ are left to the stock handler untouched.
 > the glue sees the original entry layout and never returns (`jmp` into stock).
 
 The apply sets the same globals the page does and marks the pattern store dirty,
-so a CC move is saved with the pattern (see `docs/PATTERN-STORAGE.md`).
+so a CC move is saved with the pattern (see `docs/PATTERN-STORAGE.md`). Our
+parameters change only from our own page encoders, keys and these CCs — the
+per-pattern sync only adopts a block that still carries the `"DGX1"` magic, so a
+stock OS event cannot reach any DIGI parameter.
 
 ## CC map
 

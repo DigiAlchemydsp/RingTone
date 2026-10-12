@@ -120,6 +120,10 @@ untouched. Approximate instructions per active stereo frame (32 frames/block,
 Turn off the pages you are not using; each true-bypasses. Full ledger in
 [`docs/OPTIMIZATION.md`](docs/OPTIMIZATION.md).
 
+**Output ceiling:** a final soft limiter keeps the master mix below the 24-bit
+full scale (transparent below ~-2.5 dBFS, asymptotic max ~-0.7 dBFS), so a hot
+flanger-feedback / pitch-shift / drive setting cannot hard-clip.
+
 ## Layout
 
 ```
