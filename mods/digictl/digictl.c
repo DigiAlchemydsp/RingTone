@@ -15,6 +15,17 @@
  *   PITCH kind 4  A = on/off, D = mode (WOB/SHFT), E = speed, F = depth
  *   STEREO kind 5 A = on/off, D = mode (FLAN/PAN/WIDE), E = speed, F = depth,
  *                 G = mix, H = feedback
+ *   PERF  kind 6  the static performance page: no animation, one depth per FX
+ *                 block on the encoders (A ring depth, B fold amount, C crush
+ *                 amount, D wave pitch depth, E wave stereo depth, F EQ low,
+ *                 G EQ high, H wave speed). Reached by pressing UP on any of the
+ *                 six pages; UP again returns. The 16 trigs are momentary
+ *                 performance pads, four blocks of four intensities (1 2 9 10
+ *                 ring, 3 4 11 12 fold/crush, 5 6 13 14 pitch, 7 8 15 16 pan):
+ *                 a held trig ramps its block's depth up (and turns it on),
+ *                 holding at the intensity target, and restores the saved
+ *                 pattern value on release. The store is never dirtied by the
+ *                 pads, so the pattern value is the floor.
  *
  * The stock top status bar (rows 53..63) is left untouched; our drawing stays
  * below it. None of the stock pages are taken: the pages are reached by FUNC+LFO
@@ -38,7 +49,11 @@
 #define DN_CRKIND     3
 #define DN_WVKIND     4            /* WAVE pitch page: WOB / SHFT */
 #define DN_WSKIND     5            /* WAVE stereo page: FLAN / PAN / WIDE */
-#define DN_NPAGES     6
+#define DN_PFKIND     6            /* PERF page: static depths + momentary trigs */
+#define DN_NPAGES     7
+#define DN_K_UP       15           /* the UP key id */
+#define DN_TRIG1      26           /* trig key ids 26..41 = trigs 1..16 */
+#define DN_TRIG16     41
 #define DC_PER_STEP   4
 #define DG_TOP        53            /* rows 53..63 are the stock status bar */
 
@@ -225,13 +240,125 @@ void digictl_cc_apply(int cc, int value)
     dn_store_dirty = 1;              /* persist with the pattern */
 }
 
+/* ---- PERFORM page: static depths + momentary trig pads -----------------------
+ * The 16 trigs are performance pads in four blocks; each block has four pads of
+ * increasing intensity. A held pad saves the block's depth (and on/off), turns
+ * the block on, and ramps the depth up to the intensity target (base + 1/4..4/4
+ * of the way to 127), where it holds. Releasing it ramps back to the saved
+ * value and restores the on/off. This never touches the per-pattern store, so
+ * the saved value is always the resting position.
+ *
+ * The ramp runs in ev_render_in (audio context, 1500 Hz), one cheap step per
+ * block, and only while a pad or its release ramp is active -- with no pad held
+ * it costs a single flag test. */
+#define PF_N 4
+static const unsigned char pf_trig_block[16] = {
+    0, 0, 1, 1, 2, 2, 3, 3, 0, 0, 1, 1, 2, 2, 3, 3
+};
+static const unsigned char pf_trig_inten[16] = {
+    1, 2, 1, 2, 1, 2, 1, 2, 3, 4, 3, 4, 3, 4, 3, 4
+};
+/* block -> its params (index -1 = none) */
+static const signed char pf_block_params[4][2] = {
+    { 0, -1 },          /* ring: depth */
+    { 1,  2 },          /* fold + crush: amount each */
+    { 3, -1 },          /* pitch: wave depth (PITCH group) */
+    { 3, -1 },          /* pan: wave depth (STEREO group) */
+};
+static int *const pf_param[PF_N] = {
+    &digiring_depth, &digifold_amount, &digicrush_amount, &digiwave_depth
+};
+static int *const pf_onflag[PF_N] = {
+    &digiring_on, &digifold_on, &digicrush_on, &digiwave_on
+};
+
+static volatile unsigned pf_holdmask[PF_N];     /* pads currently holding */
+static volatile unsigned pf_taken;              /* trig presses we consumed */
+static int pf_base[PF_N];                       /* saved value at first engage */
+static int pf_cur[PF_N];                        /* ramped value */
+static int pf_tgt[PF_N];                        /* target while holding */
+static int pf_onbase[PF_N];                     /* saved on/off */
+static signed char pf_active[PF_N];
+static volatile int pf_running;                 /* any pad or release ramp live */
+
+static void pf_trig_down(int t)
+{
+    int b = pf_trig_block[t], k = pf_trig_inten[t], i;
+    pf_taken |= 1u << t;
+    for (i = 0; i < 2; i++) {
+        int p = pf_block_params[b][i], tgt;
+        if (p < 0)
+            break;
+        if (!pf_holdmask[p]) {                  /* first pad on this param */
+            pf_base[p] = *pf_param[p];
+            pf_onbase[p] = *pf_onflag[p];
+            pf_cur[p] = *pf_param[p];
+            pf_tgt[p] = *pf_param[p];
+        }
+        pf_holdmask[p] |= (1u << t);
+        *pf_onflag[p] = 1;
+        tgt = pf_base[p] + (127 - pf_base[p]) * k / 4;
+        if (tgt > pf_tgt[p])
+            pf_tgt[p] = tgt;
+        pf_active[p] = 1;
+    }
+    if (b == 2)
+        digiwave_page = 0;                      /* pitch pad uses the PITCH group */
+    else if (b == 3)
+        digiwave_page = 1;                      /* pan pad uses the STEREO group */
+    pf_running = 1;
+}
+
+static void pf_trig_up(int t)
+{
+    int b = pf_trig_block[t], i;
+    pf_taken &= ~(1u << t);
+    for (i = 0; i < 2; i++) {
+        int p = pf_block_params[b][i];
+        if (p < 0)
+            break;
+        pf_holdmask[p] &= ~(1u << t);
+        if (!pf_holdmask[p])
+            pf_tgt[p] = pf_base[p];             /* release: ramp back down */
+    }
+}
+
+/* ev_render_in: the momentary ramp, before any insert reads its params. */
+static void pf_apply(void)
+{
+    int p;
+    if (!pf_running)
+        return;
+    pf_running = 0;
+    for (p = 0; p < PF_N; p++) {
+        int t, d;
+        if (!pf_active[p])
+            continue;
+        t = pf_holdmask[p] ? pf_tgt[p] : pf_base[p];
+        d = t - pf_cur[p];
+        if (d > -32 && d < 32)
+            pf_cur[p] = t;
+        else
+            pf_cur[p] += d >> 5;
+        *pf_param[p] = pf_cur[p];
+        if (!pf_holdmask[p] && pf_cur[p] == pf_base[p]) {
+            pf_active[p] = 0;                   /* settled back: let go */
+            *pf_onflag[p] = pf_onbase[p];
+        } else {
+            pf_running = 1;
+        }
+    }
+}
+
 static const int dc_kinds[DN_NPAGES] = {
-    DN_FXKIND, DN_FEKIND, DN_EQKIND, DN_CRKIND, DN_WVKIND, DN_WSKIND
+    DN_FXKIND, DN_FEKIND, DN_EQKIND, DN_CRKIND, DN_WVKIND, DN_WSKIND,
+    DN_PFKIND
 };
 
 #define DN_MASTER_VT  0x40199BAC
 static char *dc_view;               /* the master view, from its last draw */
 static int dc_vis;                  /* frames since the master view was drawn */
+static int dc_perf_prev;            /* page index to return to from PERF */
 static int dc_eacc[10];             /* per-encoder accumulation (ids 0..9), as
                                      * the OS does -- sized for id 9 too */
 static volatile unsigned dc_out;    /* output half, for the ceiling stage */
@@ -248,6 +375,7 @@ void digictl_mod_in(void)
 {
     int idx, d = digimod_dest, v = digimod_voice;
     dc_out = dn_out_off();               /* the half this block writes */
+    pf_apply();                          /* PERFORM-page momentary pads */
     /* The track-LFO bridge is parked: it only drives a param when explicitly
      * enabled (digimod_dest 1..5). A stock OS event never sets it. */
     if (v < 1 || v > 8 || d < 1 || d > 5)
@@ -305,6 +433,18 @@ static int cur_kind(char *view)
     return v[i];
 }
 
+/* the index of page kind `k` in the master vector, or -1 */
+static int dc_find_kind(char *view, int k)
+{
+    int *v = *(int **)(view + 124), *e = *(int **)(view + 128), i;
+    if (!v || !e || e <= v)
+        return -1;
+    for (i = 0; i < e - v; i++)
+        if (v[i] == k)
+            return i;
+    return -1;
+}
+
 static void add_page(char *view)
 {
     int *v = *(int **)(view + 124), *e = *(int **)(view + 128), *nv;
@@ -312,7 +452,7 @@ static void add_page(char *view)
     if (!v || n < 1 || n > 13)
         return;
     for (i = 0; i < n; i++)
-        if (v[i] >= DN_FXKIND && v[i] <= DN_WSKIND)
+        if (v[i] >= DN_FXKIND && v[i] <= DN_PFKIND)
             return;
     pos = n >= 4 ? 3 : n;                   /* after the stock master pages */
     nv = DN_OP_NEW(4u * (unsigned)(n + DN_NPAGES));
@@ -675,6 +815,31 @@ static void dg_wave_bars(void *bmp, const char *m, const char *title, int which)
 static void dg_wave_page(void *bmp)  { dg_wave_bars(bmp, dg_pname(), "PITCH", 0); }
 static void dg_wave2_page(void *bmp) { dg_wave_bars(bmp, dg_sname(), "STEREO", 1); }
 
+/* ---------------- PERF: the static performance page (no animation) -----------
+ * One depth readout per block on the eight encoders, and the trig-pad legend.
+ * Nothing here animates: the same pixels every frame, so the page adds no
+ * per-frame work beyond the text draw. */
+static const char *const dg_pflbl[8] = {
+    "A RNG", "B FLD", "C CRS", "D PIT", "E STE", "F LO", "G HI", "H SPD"
+};
+static int *const dg_pfval[8] = {
+    &digiring_depth, &digifold_amount, &digicrush_amount, &digiwave_depth,
+    &digiwave_depth, &digieq_lo, &digieq_hi, &digiwave_speed
+};
+
+static void dg_perf_page(void *bmp)
+{
+    int i;
+    DN_FILLRECT(bmp, 0, 0, 127, DG_TOP - 1, 0);
+    DN_TEXTF(bmp, DN_FONT5, (128 - dg_strw("PERFORM", 1)) / 2, 45, -1, "PERFORM");
+    for (i = 0; i < 8; i++) {
+        int x = (i / 4) ? 66 : 4;
+        int y = 34 - (i % 4) * 10;
+        DN_TEXTF(bmp, DN_FONT5, x, y, -1, "%s %d",
+                 dg_pflbl[i], *dg_pfval[i]);
+    }
+}
+
 /* vtable slot 4 of the master view: draw */
 void digictl_mdraw(void *view, void *bmp)
 {
@@ -696,6 +861,8 @@ void digictl_mdraw(void *view, void *bmp)
         dg_wave_page(bmp);
     else if (k == DN_WSKIND)
         dg_wave2_page(bmp);
+    else if (k == DN_PFKIND)
+        dg_perf_page(bmp);
 }
 
 /* every UI frame: keep the master view redrawing while it is shown, so the
@@ -736,7 +903,8 @@ int digictl_enc(void *brain, void *ev)
         return 0;
     k = cur_kind(dc_view);
     if (k != DN_FXKIND && k != DN_FEKIND && k != DN_EQKIND &&
-        k != DN_CRKIND && k != DN_WVKIND && k != DN_WSKIND)
+        k != DN_CRKIND && k != DN_WVKIND && k != DN_WSKIND &&
+        k != DN_PFKIND)
         return 0;
     if (!delta)
         return 1;
@@ -798,6 +966,20 @@ int digictl_enc(void *brain, void *ev)
         case 8: digiwave_fb = clampi(digiwave_fb + d, 0, 127); break;
         default: break;
         }
+    } else if (k == DN_PFKIND) {         /* PERF: one depth per block */
+        switch (id) {
+        case 1: digiring_depth = clampi(digiring_depth + d, 0, 127); break;
+        case 2: digifold_amount = clampi(digifold_amount + d, 0, 127); break;
+        case 3: digicrush_amount = clampi(digicrush_amount + d, 0, 127); break;
+        case 4: digiwave_page = 0;        /* D: the PITCH group's depth */
+                digiwave_depth = clampi(digiwave_depth + d, 0, 127); break;
+        case 5: digiwave_page = 1;        /* E: the STEREO group's depth */
+                digiwave_depth = clampi(digiwave_depth + d, 0, 127); break;
+        case 6: digieq_lo = clampi(digieq_lo + d, 0, 127); break;
+        case 7: digieq_hi = clampi(digieq_hi + d, 0, 127); break;
+        case 8: digiwave_speed = clampi(digiwave_speed + d, 0, 127); break;
+        default: break;
+        }
     } else {                             /* DN_FXKIND */
         switch (id) {
         case 1: digiring_on = (d > 0); break;
@@ -817,10 +999,57 @@ int digictl_key(void *brain, void *ev)
 {
     int id = *(int *)((char *)ev + 12);
     int flags = *(int *)((char *)ev + 16);
-    int *v, n, idx;
+    int k, *v, n, idx;
     (void)brain;
     if (!master_live(dc_view))
         return 0;
+    k = cur_kind(dc_view);
+
+    /* The trigs: momentary pads while the PERFORM page is up. A press we took
+     * is always releases on the way up, even if the page changed first. */
+    if (id >= DN_TRIG1 && id <= DN_TRIG16) {
+        int t = id - DN_TRIG1;
+        if (flags & 1) {
+            if (flags & 8)
+                return (pf_taken & (1u << t)) ? 1 : 0;   /* swallow repeats */
+            if (k == DN_PFKIND && !(flags & 0x10)) {
+                pf_trig_down(t);
+                DN_INVALIDATE(dc_view);
+                return 1;
+            }
+            return 0;
+        }
+        if (pf_taken & (1u << t)) {                 /* our release */
+            pf_trig_up(t);
+            if (k == DN_PFKIND)
+                DN_INVALIDATE(dc_view);
+            return 1;
+        }
+        return 0;
+    }
+
+    /* UP: from any DIGI page to the PERFORM page, and back. */
+    if (id == DN_K_UP && (flags & 1) && !(flags & 0x10) && !(flags & 8)) {
+        if (k >= DN_FXKIND && k <= DN_WSKIND) {
+            idx = dc_find_kind(dc_view, DN_PFKIND);
+            if (idx >= 0) {
+                dc_perf_prev = *(int *)(dc_view + 144);
+                *(int *)(dc_view + 144) = idx;
+                DN_INVALIDATE(dc_view);
+                return 1;
+            }
+        } else if (k == DN_PFKIND) {
+            v = *(int **)(dc_view + 124);
+            n = v ? (int)((*(int **)(dc_view + 128)) - v) : 0;
+            idx = dc_perf_prev;
+            if (idx < 0 || idx >= n)
+                idx = 0;
+            *(int *)(dc_view + 144) = idx;
+            DN_INVALIDATE(dc_view);
+            return 1;
+        }
+    }
+
     if (!(flags & 1) || (flags & 0x10) || (flags & 8))
         return 0;                               /* ignore key-repeat */
     if (id != 17 && id != 18)                   /* LEFT / RIGHT */

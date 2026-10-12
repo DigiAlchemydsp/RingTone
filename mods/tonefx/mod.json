@@ -1,11 +1,11 @@
 {
  "id": "tonefx",
- "version": "3.1i",
+ "version": "3.2a",
  "title": "Tone+FX",
  "category": "Sound",
  "author": "Digital Alchemy DSP",
  "license": "GPL-2.0-or-later",
- "description": "The Tone+FX suite as one elemod: master ring modulator (digiring), a low-shelf/high-shelf master EQ (digieq), a wavefolder with a continuous CLEAN/MUD/DIST/TRSH fold type and an internal hard-clip overdrive on DIST/TRSH (digifold), a Crunch/Redux lo-fi stage (digicrush), a five-mode modulation insert WOB/SHFT/FLAN/PAN/WIDE (digiwave), output meter (digimeter) and the DIGI RING / DIGI FOLD / DIGI TILT / DIGI CRUSH / DIGI WAVE master pages with all their controls (digictl), plus the TONE+FX boot splash (tonesplash: an animated wordmark drawn at the intro, one of three animations per boot). Settings are stored per pattern and the FX respond to incoming MIDI CC. It REQUIRES the core (core-dn1) and does not include it, so it combines with any other elekloader mods.",
+ "description": "The Tone+FX suite as one elemod: master ring modulator (digiring), a low-shelf/high-shelf master EQ (digieq), a wavefolder with a continuous CLEAN/MUD/DIST/TRSH fold type and an internal hard-clip overdrive on DIST/TRSH (digifold), a Crunch/Redux lo-fi stage (digicrush), a five-mode modulation insert WOB/SHFT/FLAN/PAN/WIDE (digiwave), output meter (digimeter) and the DIGI RING / DIGI FOLD / DIGI TILT / DIGI CRUSH / DIGI WAVE / PERFORM master pages with all their controls (digictl). The PERFORM page is a static (non-animated) touch page reached with UP from any DIGI page: eight encoders set one depth per FX block, and the 16 trigs are momentary performance pads in four blocks of four intensities (ring / fold+crush / pitch / pan) that ramp their block's depth up while held and restore the saved pattern value on release, without ever writing the per-pattern store. Plus the TONE+FX boot splash (tonesplash: an animated wordmark drawn at the intro, one of three animations per boot). Settings are stored per pattern and the FX respond to incoming MIDI CC. It REQUIRES the core (core-dn1) and does not include it, so it combines with any other elekloader mods.",
  "device": "digitone-mk1",
  "os": "1.43",
  "sources": [
@@ -63,7 +63,8 @@
    "ui:master EQ",
    "ui:master wavefolder",
    "ui:master DIGI CRUSH",
-   "ui:master DIGI WAVE"
+   "ui:master DIGI WAVE",
+   "ui:master PERFORM"
   ]
  }
 }

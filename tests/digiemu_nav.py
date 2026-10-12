@@ -77,7 +77,7 @@ def main():
     m.poke(view + 144, (0).to_bytes(4, "big"))
     spin(80_000_000)
     before = idx(view)
-    pc = btn(18, True); spin(6_000_000); pc = btn(18, False); spin(10_000_000)
+    pc = btn(18, True); spin(16_000_000); pc = btn(18, False); spin(24_000_000)
     after = idx(view)
     print("stock page long-sit: RIGHT %d -> %d %s" % (before, after,
           "OK" if after == (before + 1) % nk else "FAIL"))
@@ -87,14 +87,14 @@ def main():
     start = after
     seen = [after]
     for _ in range(nk - 1):
-        pc = btn(18, True); spin(4_000_000); pc = btn(18, False); spin(8_000_000)
+        pc = btn(18, True); spin(16_000_000); pc = btn(18, False); spin(24_000_000)
         seen.append(idx(view))
     print("RIGHT cycle:", seen, "OK" if seen == [(start + i) % nk for i in range(nk)] else "FAIL")
     ok = ok and seen == [(start + i) % nk for i in range(nk)]
 
     # LEFT one step
     cur = idx(view)
-    pc = btn(17, True); spin(4_000_000); pc = btn(17, False); spin(8_000_000)
+    pc = btn(17, True); spin(16_000_000); pc = btn(17, False); spin(24_000_000)
     print("LEFT:", idx(view), "OK" if idx(view) == (cur + nk - 1) % nk else "FAIL")
     ok = ok and idx(view) == (cur + nk - 1) % nk
 

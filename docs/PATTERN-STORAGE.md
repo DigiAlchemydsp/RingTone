@@ -76,6 +76,15 @@ pattern switch / reload and travel with a project save, exactly like stock
 parameters. New patterns (no magic) start from whatever the mods currently hold,
 so the sound never jumps.
 
+## The PERFORM page momentary pads
+
+The PERFORM page's 16 trig pads (`pf_apply` in `digictl.c`) override a block's
+depth only while the pad is held (and the short release ramp), restoring the
+saved value afterwards. They **never set `dn_store_dirty`** and never write the
+block, so a pad is a live gesture: the pattern value is always the resting
+position, and a save taken during a pad still stores the pattern value. The pad
+state lives in plain `.bss` (`pf_*`), not in the store.
+
 ## Verified in digiemu
 
 `dn1-3.1i` (core-dn1-2.0a + the merged suite, digictl 2.0): at boot the current
