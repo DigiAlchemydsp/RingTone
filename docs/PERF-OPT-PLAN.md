@@ -21,7 +21,7 @@ updated: `docs/OPTIMIZATION.md`.
 | 9 | SHFT trim (2nd grain) | med | M | med | tiny | pending |
 | 10 | Cheap `dn_q15` blend option | med | S | low | lo-fi modes only | pending |
 | 11 | Hoist per-sample branches | low | S | low | none | **landed** |
-| 12 | Delay line: downsample / 12-bit / shorter | **high** | M | med | yes (trade) | pending |
+| 12 | Delay line: downsample / 12-bit / shorter | **high** | M | med | yes (trade) | **partial** |
 | 13 | Hot tables to `.fast` SRAM | high | L | high | none | blocked |
 | 14 | Store-sync gating | low | S | low | none | **landed** |
 | 15 | Compiler flags / unroll / alignment | med | S | low | none | **rejected** |
@@ -208,6 +208,14 @@ Options (trade quality):
 Pair with the flanger flush/prime (HANDOFF §6) so quality stays clean.
 **Impact:** high on the delay modes. **Verify:** A/B + a `cftiming` pass.
 
+**Status: partial — the "shorter" option landed with the flanger fix.** FLAN was
+given its **own** line `wv_fbuf[2][257]` (fixes the flanger/pitch link, HANDOFF
+§6), so the dry line no longer has to serve it and `WV_N` 2048 → **1024**
+(~21 ms; still > WOB's 765-sample delay and SHFT's ~756-sample grain). `.bss`
+25578 → **19446** (−6132). The downsample and 12-bit variants were **not** taken.
+`flanger_check.py` proves FLAN and WOB/SHFT use independent lines. Trade: SHFT
+history is now 1024 samples — confirm on hardware.
+
 ## 13. Hot tables / code to `.fast` SRAM
 
 **Blocked today:** the DN device profile claims no `.fast` area and the render
@@ -250,6 +258,7 @@ hardware or burst-aware measurement.
 ## Explicitly out of scope here
 
 - Changing the FX algorithms/sound (only quality/CPU trades in #9/#10/#12).
-- The open bugs in `HANDOFF.md` §6/§8 (flanger/pitch link, PAGE jump, PITCH on
-  note-off, microtiming, yellow LEDs) — those are separate fixes; the flanger
-  flush interacts with #12, so land them together.
+- The other open bugs in `HANDOFF.md` §6/§8 (PAGE jump, PITCH on note-off,
+  microtiming, yellow LEDs) — separate fixes. **The flanger/pitch link is done**
+  on this branch (separate FLAN line, landed with #12); see `OPTIMIZATION.md`
+  §10.1.

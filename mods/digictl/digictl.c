@@ -787,6 +787,14 @@ static void dg_px(int x, int y)
     dg_fb[(7 - (r >> 3)) + (x << 3)] |= (unsigned char)(1u << (r & 7));
 }
 
+static void dg_frame(int x0, int y0, int x1, int y1)
+{
+    dg_fill(x0, y0, x1, y0, 1);
+    dg_fill(x0, y1, x1, y1, 1);
+    dg_fill(x0, y0, x0, y1, 1);
+    dg_fill(x1, y0, x1, y1, 1);
+}
+
 static void dg_glyph(void *bmp, int x, int ytop, int ch, int sc)
 {
     int w = DN_FW[ch & 0xff];
@@ -824,6 +832,20 @@ static void dg_arrows(void *bmp)
 {
     dg_glyph(bmp, 3, 30, '<', 1);
     dg_glyph(bmp, 122, 30, '>', 1);
+}
+
+/* An OFF message box: a 1 px frame with "OFF" inside, centred horizontally and
+ * sitting above the vertical middle of the drawable area. Drawn over the page
+ * when its FX / macro section is switched off. */
+static void dg_offbox(void *bmp)
+{
+    const char *s = "OFF";
+    int w = dg_strw(s, 1);
+    int x0 = (128 - (w + 12)) / 2, x1 = x0 + w + 11;
+    int y0 = 51, y1 = 37;                   /* box top / bottom (stock coords) */
+    dg_fill(x0, y0, x1, y1, 0);             /* clear the box area */
+    dg_frame(x0, y0, x1, y1);
+    dg_text(bmp, (128 - w) / 2, 48, s, 1);
 }
 
 /* ---------------- RING: animation + value bars ---------------- */
@@ -1262,6 +1284,24 @@ static void dg_space_page(void *bmp)
     dg_macro_frame(bmp, "SPACE", dgmac4_on, dgmac4_amount);
 }
 
+/* Is the section the current page edits switched off? PERFORM has no on/off. */
+static int dg_page_off(int k)
+{
+    switch (k) {
+    case DN_FXKIND:   return !digiring_on;
+    case DN_FEKIND:   return !digifold_on;
+    case DN_EQKIND:   return !digieq_on;
+    case DN_CRKIND:   return !digicrush_on;
+    case DN_WVKIND:   return !digiwave_on;
+    case DN_WSKIND:   return !digiwave_son;
+    case DN_WASHKIND: return !digiwash_on;
+    case DN_RADKIND:  return !dgmac2_on;
+    case DN_DESKIND:  return !dgmac3_on;
+    case DN_SPCKIND:  return !dgmac4_on;
+    default:          return 0;
+    }
+}
+
 /* vtable slot 4 of the master view: draw */
 void digictl_mdraw(void *view, void *bmp)
 {
@@ -1303,6 +1343,8 @@ void digictl_mdraw(void *view, void *bmp)
         dg_destroy_page(bmp);
     else if (k == DN_SPCKIND)
         dg_space_page(bmp);
+    if (dg_page_off(k))
+        dg_offbox(bmp);                       /* section off: show OFF */
 }
 
 /* Every UI frame, but only redraw at dc_rate (input still invalidates at once,

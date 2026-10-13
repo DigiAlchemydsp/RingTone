@@ -359,3 +359,41 @@ cycles neutral in `cftiming` (the removed loads/compares overlap the tick's
 stalls), so this is an instruction/bus-read win, not a cycle one. Persistence
 verified: `tests/digiemu_pattern_store.py` PASS (`DGX1` magic and marker survive,
 per-pattern switch works).
+
+## 10. Feature / fix work on this branch
+
+Not optimizations; landed here because they touch the same files.
+
+### 10.1 Flanger/pitch linked delay — fixed (HANDOFF §6, paired with #12)
+
+**Bug:** WOB / SHFT / FLAN shared one delay line `wv_buf`; FLAN writes its
+*fedback* output into it, so leaving FLAN left ~16 ms of feedback samples that
+WOB/SHFT then read and distorted the PITCH bloc.
+
+**Fix (HANDOFF §6 option 2/3):** FLAN now owns a **separate** line
+`wv_fbuf[2][WV_FN+1]` (`WV_FN` 256 ≈ 5.3 ms — enough for FLAN's base 128 + span
+127); WOB/SHFT keep the dry line `wv_buf`. They can no longer cross-talk, so no
+transition flush is needed for correctness. **Paired with #12:** the dry line is
+now `WV_N` 2048 → **1024** (~21 ms — still > the 765-sample WOB delay and the
+~756-sample SHFT grain), which is the delay-line footprint win.
+
+| | before | after |
+|---|---|---|
+| `.bss` (delay lines) | 25578 | **19446** (−6132) |
+| `.run` | 27199 | 27595 (+396 incl. the OFF cue) |
+
+**Verified** (`flanger_check.py`, silent snapshot, sentinel-seeded lines):
+FLAN moved only its own line (`wv_fbuf` changed, `wv_buf` byte-identical to the
+sentinel); WOB moved only the dry line (`wv_buf` changed, `wv_fbuf` untouched).
+**Trade:** SHFT's grain history is 1024 instead of 2048 samples; WOB is
+unaffected. Confirm the SHFT sound on hardware.
+
+### 10.2 OFF cue on the FX / macro pages
+
+Every DIGI page whose section is switched off now draws an `OFF` message box
+(1 px frame + `OFF`, centred horizontally above the middle of the drawable area)
+over the page: RING/FOLD/TILT/CRUSH/PITCH/STEREO by their on flag, WASH/RADIO/
+DESTROY/SPACE by their macro flag. PERFORM has no on/off and shows none. Drawn
+with the direct-framebuffer helpers (#1) after the page. Verified by capturing
+all 11 pages: the off-by-default CRUSH/PITCH/STEREO/WASH/RADIO/DESTROY/SPACE
+show the box; RING/FOLD/TILT do not.

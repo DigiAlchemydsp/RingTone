@@ -36,18 +36,28 @@ int digiwave_fb = 0;            /* flanger feedback (capped at 75%) */
 #define WV_PAN 3
 #define WV_WID 4
 
-#define WV_N     2048
+#define WV_N     1024           /* WOB/SHFT dry line (was 2048): 2048 covers
+                                 * 765 samples (WOB) and ~756 (SHFT grain), so
+                                 * 1024 (~21 ms) is enough and halves the RAM */
 #define WV_MASK  (WV_N - 1)
 #define WV_GRAIN 512            /* SHFT grain length, samples (~10.7 ms) */
 #define WV_LEAD  256            /* SHFT restart delay */
+#define WV_FN    256            /* FLAN's own feedback line (~5.3 ms): the flanger
+                                 * needs ~255 samples (base 128 + span 127) */
+#define WV_FMASK (WV_FN - 1)
 
 #define WV_K 89478              /* 2^32 / 48000: Hz -> Q32 phase inc */
 
 static volatile unsigned wv_off;
 
-/* +1 guard sample mirrors index 0, so a read at idx+1 never needs a mask */
+/* +1 guard sample mirrors index 0, so a read at idx+1 never needs a mask.
+ * WOB and SHFT share the dry line; FLAN keeps its OWN line because it writes
+ * feedback into it -- that feedback must never reach WOB/SHFT (the
+ * flanger/pitch "link"): with separate buffers there is no cross-talk to flush. */
 static int wv_buf[2][WV_N + 1];
-static unsigned wv_w;           /* write index */
+static unsigned wv_w;           /* dry write index (WOB/SHFT) */
+static int wv_fbuf[2][WV_FN + 1];
+static unsigned wv_fw;          /* FLAN feedback write index */
 static unsigned wv_phase;       /* LFO phase, Q32 */
 
 /* ramped (de-zipper) state, Q15: each mode's neutral value = true bypass */
@@ -111,16 +121,19 @@ static const short wv_win[256] = {
 
 #define WV_PUT(ch, v) do { wv_buf[ch][wv_w] = (v); \
     if (wv_w == 0) wv_buf[ch][WV_N] = (v); } while (0)
+#define WV_FPUT(ch, v) do { wv_fbuf[ch][wv_fw] = (v); \
+    if (wv_fw == 0) wv_fbuf[ch][WV_FN] = (v); } while (0)
 
 void digiwave_render_in(void)
 {
     wv_off = dn_out_off();
 }
 
-/* interpolated read at pos (Q16.16), one channel (guard sample => no mask) */
-static inline int wv_read(const int *line, unsigned pos)
+/* interpolated read at pos (Q16.16), one channel (guard sample => no mask beyond
+ * `mask`); `mask` is WV_MASK for the dry line and WV_FMASK for FLAN's line */
+static inline int wv_read(const int *line, unsigned pos, unsigned mask)
 {
-    unsigned idx = (pos >> 16) & WV_MASK;
+    unsigned idx = (pos >> 16) & mask;
     int frac = (int)((pos >> 1) & 0x7fff);          /* Q15 */
     int a = line[idx];
     return a + dn_mul15(line[idx + 1] - a, frac);
@@ -155,9 +168,14 @@ static int wv_seq = -1;
 static void wv_flush(void)
 {
     int i, j;
-    for (i = 0; i < 2; i++)
+    for (i = 0; i < 2; i++) {
         for (j = 0; j <= WV_N; j++)
             wv_buf[i][j] = 0;
+        for (j = 0; j <= WV_FN; j++)
+            wv_fbuf[i][j] = 0;
+    }
+    wv_w = 0;
+    wv_fw = 0;
     wv_gpos[0] = wv_gpos[1] = 0;
     wv_age[0] = wv_age[1] = 0;
     wv_primed = 0;
@@ -211,8 +229,8 @@ void digiwave_render_out(void)
                 if (dq < (2 << 16)) dq = (2 << 16);     /* never wrap negative */
                 rp = ((wv_w << 16) + (WV_N << 16) - (unsigned)dq) &
                      ((WV_N << 16) - 1);
-                wl = wv_read(wv_buf[0], rp);
-                wr = wv_read(wv_buf[1], rp);
+                wl = wv_read(wv_buf[0], rp, WV_MASK);
+                wr = wv_read(wv_buf[1], rp, WV_MASK);
                 p[0] = l + dn_mul15(wl - l, wet);
                 p[1] = r + dn_mul15(wr - r, wet);
                 WV_PUT(0, l);
@@ -237,10 +255,10 @@ void digiwave_render_out(void)
                 unsigned rp;
                 int wl, wr;
                 if (dq < (2 << 16)) dq = (2 << 16);
-                rp = ((wv_w << 16) + (WV_N << 16) - (unsigned)dq) &
-                     ((WV_N << 16) - 1);
-                wl = wv_read(wv_buf[0], rp);
-                wr = wv_read(wv_buf[1], rp);
+                rp = ((wv_fw << 16) + (WV_FN << 16) - (unsigned)dq) &
+                     ((WV_FN << 16) - 1);
+                wl = wv_read(wv_fbuf[0], rp, WV_FMASK); /* FLAN's own line */
+                wr = wv_read(wv_fbuf[1], rp, WV_FMASK);
                 int fl, fr;
                 p[0] = l + dn_mul15(wl - l, m);
                 p[1] = r + dn_mul15(wr - r, m);
@@ -251,9 +269,9 @@ void digiwave_render_out(void)
                 else if (fl < -0x700000) fl = -0x700000;
                 if (fr > 0x700000) fr = 0x700000;
                 else if (fr < -0x700000) fr = -0x700000;
-                WV_PUT(0, fl);
-                WV_PUT(1, fr);
-                wv_w = (wv_w + 1) & WV_MASK;
+                WV_FPUT(0, fl);                         /* never the dry line */
+                WV_FPUT(1, fr);
+                wv_fw = (wv_fw + 1) & WV_FMASK;
                 l0 += lstep;
                 m += mstep;
                 p += 2;
