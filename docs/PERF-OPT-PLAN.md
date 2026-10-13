@@ -15,7 +15,7 @@ updated: `docs/OPTIMIZATION.md`.
 | 3 | Partial screen clear | med | S | low | none | pending |
 | 4 | Meter gated on visibility | med | S | low | none | **landed** |
 | 5 | Ceiling gated on "hot" | low–med | S | low | none | pending |
-| 6 | Cache `dn_out_off()` | low | S | low | none | pending |
+| 6 | Cache `dn_out_off()` | low | S | low | none | **rejected** |
 | 7 | EMAC for the multiplies | **high** | L | med | none | pending |
 | 8 | Ring LFO → block-rate | med | S | low | none | pending |
 | 9 | SHFT trim (2nd grain) | med | M | med | tiny | pending |
@@ -103,6 +103,15 @@ the limiter when nothing can overshoot — or fold it into #2. **Impact:** small
 `dn_out_off()` (reads eDMA SADDR) is called in **7** handlers per block. Compute
 it once in `digictl_mod_in` (order 40, runs first) into a shared `volatile`, and
 have the others read it. **Impact:** small; trivial.
+
+**Status: rejected (measured regression).** `dn_out_off()` is already a
+`static inline` (a single uncached register read), not a call, so a shared
+cache only adds work. Implemented via a COMMON symbol set in `digictl_mod_in`:
+`.run 26791 → 26907` (+116), relocs 915 → 929, and `cftiming` render worst
+99557 → **99575** cyc, mean 99140.8 → **99154.4** — the extra cached load and
+branch per handler cost more than the six eDMA reads saved (cftiming gives no
+credit for the uncached read). Reverted; the premise (that it is a call) was
+wrong.
 
 ## 7. EMAC for the multiplies
 
