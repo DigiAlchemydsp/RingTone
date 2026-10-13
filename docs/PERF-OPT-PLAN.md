@@ -16,13 +16,13 @@ updated: `docs/OPTIMIZATION.md`.
 | 4 | Meter gated on visibility | med | S | low | none | **landed** |
 | 5 | Ceiling gated on "hot" | low–med | S | low | none | **landed** |
 | 6 | Cache `dn_out_off()` | low | S | low | none | **rejected** |
-| 7 | EMAC for the multiplies | **high** | L | med | none | pending |
+| 7 | EMAC for the multiplies | **high** | L | med | none | parked |
 | 8 | Ring LFO → block-rate | med | S | low | none | pending |
 | 9 | SHFT trim (2nd grain) | med | M | med | tiny | pending |
 | 10 | Cheap `dn_q15` blend option | med | S | low | lo-fi modes only | pending |
 | 11 | Hoist per-sample branches | low | S | low | none | **landed** |
 | 12 | Delay line: downsample / 12-bit / shorter | **high** | M | med | yes (trade) | pending |
-| 13 | Hot tables to `.fast` SRAM | high | L | high | none | pending |
+| 13 | Hot tables to `.fast` SRAM | high | L | high | none | blocked |
 | 14 | Store-sync gating | low | S | low | none | **landed** |
 | 15 | Compiler flags / unroll / alignment | med | S | low | none | **rejected** |
 
@@ -145,6 +145,14 @@ helpers (set up MACSR once per block in `ev_render_in`, restore after), or a
 `dn_mac` that uses the accumulator. **Caveat:** leave `MACSR` as found; verify
 the product scaling (signed fractional). **Impact:** high for the multiply-heavy
 modes. **Verify:** A/B bit-exactness.
+
+**Review note (perf-opt): parked.** Core A's render already saves/restores the
+whole EMAC (`DSP.md` §2.4: `macsr`/`accext`/`acc0-3`/`mask` at `0x4009d1a2`), so
+a handler may use it, but `dn_mul15(x,c) == (x*c)>>15` exactly and the EMAC's
+`satsl`/fractional rounding must reproduce that bit-for-bit for ring/EQ/fold/
+wave — a real inline-asm project with a bit-exact A/B per mode, not a drive-by.
+The multiplies are only on the non-default modes, so the win is bounded; park it
+with a deliberate implementation.
 
 ## 8. Ring LFO → block-rate
 
