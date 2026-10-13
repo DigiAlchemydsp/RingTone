@@ -279,6 +279,7 @@ repo (`Tone+FX`) is cut from `main` only.
 | # | item | method | `.run` | `.bss` | relocs | behaviour | status |
 |---|---|---|---|---|---|---|---|
 | 1 | Direct framebuffer UI drawing | `dg_px`/`dg_fill` write the 1 bpp panel bytes at `fb_front` (`0x40241a44`) directly, in the stock coordinate frame (display row `63-y`); all page graphics (glyphs, dots, spans, clears) stop calling `DN_FILLRECT` | 26863 → **26707** (−156) | 25562 → 25566 (+4) | 917 → 908 | RING/FOLD/TILT screenshots **pixel-identical** | **landed** |
+| 4 | Meter gated on visibility | `digimeter_render_out` returns unless `digictl_meter_active()` — a weak hook (undefined in a standalone meter build) that is true only while the FOLD page, the sole reader of `digimeter_l/r`, is up | 26707 → **26791** (+84) | 25566 → 25570 (+4) | 908 → 915 | FOLD/RING/TILT screenshots identical; render worst −408 cyc | **landed** |
 
 **Item 1 detail.** Before: `digictl.c` had **36** `DN_FILLRECT` call *sites*; the
 per-pixel glyph path (`dg_glyph`, used by every 2x mode name and the `<`/`>`
@@ -290,3 +291,19 @@ strings remain. The scaled glyph names cost 21–34 calls each (MUD 22, CLEAN 29
 TRSH 32, SHFT 34); the dot graphics another ~16–57 (PITCH 52, macros ~28–56).
 Verified by `tests/digiemu_fx_screenshots.py` against `dn1-35p1-f001f93a`:
 RING/FOLD/TILT byte-identical to the `3.5d` baseline PNGs.
+
+**Item 4 detail.** The meter's per-block peak scan (32 frames × ~2 loads + abs +
+cmp ≈ **~450 cycles** of the render vector) ran on every page though only the
+FOLD page ever draws the bars. `digictl` now exports `digictl_meter_active()`
+(true only while `cur_kind == DN_FEKIND` and the view is live); `meter.c` holds
+it by a **weak** reference, so a standalone `digimeter` build still links and
+just runs as before. Measured with a bounded `cftiming` pass
+(`accel=max`, audio on, default page, 300 ms; render vector):
+
+| | worst cyc | p99 cyc | mean cyc | deadline margin |
+|---|---|---|---|---|
+| `3.5d` (meter scans) | 99965 | 99958 | 99543.1 | 0.4003 |
+| meter gated | **99557** | **99550** | **99140.8** | **0.4027** |
+
+The −408-cycle worst/p99 and +0.24 pp margin are the skipped scan; on the FOLD
+page the scan still runs, and the FOLD screenshot is byte-identical to `3.5d`.

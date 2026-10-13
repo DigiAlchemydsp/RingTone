@@ -15,6 +15,10 @@ int digimeter_on = 1;
 int digimeter_live = 1;            /* reserved: 1 so the meter always runs */
 int digimeter_l, digimeter_r;      /* 0..60 bars, read by digictl's page */
 
+/* digictl exposes when the FOLD page (the only meter reader) is up; a weak
+ * reference keeps this mod linkable on its own (undefined -> always run). */
+extern int digictl_meter_active(void) __attribute__((weak));
+
 static volatile unsigned dm_off;
 static volatile int dm_peak_l, dm_peak_r;
 static int dm_hold_l, dm_hold_r;
@@ -39,6 +43,7 @@ void digimeter_render_out(void)
     const int *p;
     int i, pl = 0, pr = 0;
     if (!digimeter_on) return;
+    if (digictl_meter_active && !digictl_meter_active()) return;  /* not on FOLD */
     p = (const int *)(DN_OUT_BASE + dm_off);
     for (i = 0; i < DN_OUT_FRAMES; i++) {
         int l = p[0], r = p[1];

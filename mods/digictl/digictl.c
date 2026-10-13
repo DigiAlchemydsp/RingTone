@@ -574,6 +574,7 @@ static const int dc_kinds[DN_NPAGES] = {
 #define DN_MASTER_VT  0x40199BAC
 static char *dc_view;               /* the master view, from its last draw */
 static int dc_vis;                  /* frames since the master view was drawn */
+static int dc_meter_vis;            /* FOLD page (the meter reader) is up */
 static int dc_perf_prev;            /* page index to return to from PERF */
 static int dc_rate = 3;             /* ticks between redraws (animated pages) */
 static int dc_ctr;                  /* ticks since the last redraw */
@@ -642,6 +643,13 @@ void digictl_limit_out(void)
 static int master_live(char *v)
 {
     return dc_vis > 0 && v && *(int *)v == DN_MASTER_VT;
+}
+
+/* digimeter reads this (weak ref) to skip its per-block peak scan unless the
+ * FOLD page, the only page that draws the bars, is up. */
+int digictl_meter_active(void)
+{
+    return dc_meter_vis;
 }
 
 static int cur_kind(char *view)
@@ -1230,6 +1238,7 @@ void digictl_mdraw(void *view, void *bmp)
     DN_STOCK_DRAW(view, bmp);
     dc_view = (char *)view;
     k = cur_kind(dc_view);
+    dc_meter_vis = (k == DN_FEKIND);      /* only the FOLD page reads the meter */
     dc_rate = 3;
     if (k == DN_PFKIND)
         dc_rate = 8;                          /* static page */
@@ -1274,6 +1283,8 @@ void digictl_tick(void *ctrl)
     dn_store2_sync();
     if (dc_vis)
         dc_vis--;
+    if (!dc_vis)
+        dc_meter_vis = 0;                     /* left the page: stop the scan */
     if (dc_vis > 0 && dc_view && *(int *)dc_view == DN_MASTER_VT) {
         if (++dc_ctr >= dc_rate) {
             dc_ctr = 0;

@@ -13,7 +13,7 @@ updated: `docs/OPTIMIZATION.md`.
 | 1 | Direct framebuffer UI drawing | **high** | M | low | none | **landed** |
 | 2 | Fuse the master passes | **very high** | L | med | none | pending |
 | 3 | Partial screen clear | med | S | low | none | pending |
-| 4 | Meter gated on visibility | med | S | low | none | pending |
+| 4 | Meter gated on visibility | med | S | low | none | **landed** |
 | 5 | Ceiling gated on "hot" | low–med | S | low | none | pending |
 | 6 | Cache `dn_out_off()` | low | S | low | none | pending |
 | 7 | EMAC for the multiplies | **high** | L | med | none | pending |
@@ -85,6 +85,12 @@ static pages. **Where:** the `dg_*_page` prologues. **Impact:** med; pairs with
 (~15 insn/frame) but the bars are only drawn on the FOLD page. Gate it: only run
 when `dc_vis>0` **and** `cur_kind == DN_FEKIND` (expose a flag from `digictl`),
 or fold the peak scan into #2. **Impact:** ~15/frame when not on FOLD.
+
+**Status: landed.** `digictl_meter_active()` (extern, read via a weak ref so a
+standalone meter build still links) is true only while the FOLD page is up;
+`meter.c` returns early otherwise. cftiming A/B on the default page: render
+worst 99965 → 99557 cyc, p99 99958 → 99550, margin 40.03% → 40.27%. FOLD page
+unchanged (screenshot identical).
 
 ## 5. Ceiling gated on "hot"
 
