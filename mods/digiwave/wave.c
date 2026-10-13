@@ -19,7 +19,8 @@
 #include "../../src/sin256.h"
 
 /* runtime parameters (exported; digictl edits them). 0..127, one step/notch. */
-int digiwave_on = 0;
+int digiwave_on = 0;            /* PITCH group (WOB / SHFT) on/off */
+int digiwave_son = 0;           /* STEREO group (FLAN / PAN / WIDE) on/off */
 int digiwave_pmode = 0;         /* PITCH page: 0..127 -> WOB / SHFT */
 int digiwave_smode = 0;         /* STEREO page: 0..127 -> FLAN / PAN / WIDE */
 int digiwave_page = 0;          /* active group: 0 PITCH, 1 STEREO */
@@ -125,6 +126,17 @@ static inline int wv_read(const int *line, unsigned pos)
     return a + dn_mul15(line[idx + 1] - a, frac);
 }
 
+/* A ramp step that always reaches the target: (t-c)>>5 stalls at small
+ * differences (e.g. 8>>5 == 0), which left a mode "off" but still running (the
+ * flanger kept writing feedback). Snap to 1 near the target instead. */
+static inline int wv_step(int cur, int tgt)
+{
+    int s = (tgt - cur) >> 5;
+    if (s == 0 && cur != tgt)
+        s = (tgt > cur) ? 1 : -1;
+    return s;
+}
+
 /* one sine sample (Q15) at a Q32 phase */
 static inline int wv_sin(unsigned ph)
 {
@@ -135,12 +147,28 @@ static inline int wv_sin(unsigned ph)
     return s0 + (((s1 - s0) * fr) >> 8);
 }
 
+/* The delay line is shared by WOB/SHFT/FLAN. FLAN writes its feedback into it,
+ * so on a mode change or a fresh enable the line must be flushed or WOB/SHFT
+ * read the flanger's fed-back residue and distort. Only runs on the change. */
+static int wv_seq = -1;
+
+static void wv_flush(void)
+{
+    int i, j;
+    for (i = 0; i < 2; i++)
+        for (j = 0; j <= WV_N; j++)
+            wv_buf[i][j] = 0;
+    wv_gpos[0] = wv_gpos[1] = 0;
+    wv_age[0] = wv_age[1] = 0;
+    wv_primed = 0;
+}
+
 void digiwave_render_out(void)
 {
     int *p, i;
     int mode;
     int depth = digiwave_page ? digiwave_sdepth : digiwave_pdepth;
-    int on = digiwave_on ? 1 : 0;
+    int on = (digiwave_page ? digiwave_son : digiwave_on) ? 1 : 0;
 
     if (digiwave_page) {                        /* STEREO group */
         int b = 2 + ((digiwave_smode * 3) >> 7);
@@ -148,6 +176,13 @@ void digiwave_render_out(void)
     } else {                                    /* PITCH group */
         int b = (digiwave_pmode * 2) >> 7;
         mode = b > 1 ? 1 : b;
+    }
+
+    if (!on) {
+        wv_seq = -1;                            /* flush on the next enable */
+    } else if (wv_seq != mode) {
+        wv_flush();                             /* mode change: drop the residue */
+        wv_seq = mode;
     }
 
     {
@@ -167,7 +202,7 @@ void digiwave_render_out(void)
             int wet_t = (on && depth > 0) ? 32767 : 0;  /* neutral = dry */
             int wstep;
             if (wet_t == 0 && wet == 0) return;         /* true bypass */
-            wstep = (wet_t - wet) >> 5;
+            wstep = wv_step(wet, wet_t);
             for (i = 0; i < DN_OUT_FRAMES; i++) {
                 int l = p[0], r = p[1];
                 int dq = (base << 16) + span * l0 * 2;  /* Q16.16 samples */
@@ -195,7 +230,7 @@ void digiwave_render_out(void)
             int m_t = on ? mix : 0;                     /* neutral = dry */
             int mstep;
             if (m_t == 0 && m == 0) return;
-            mstep = (m_t - m) >> 5;
+            mstep = wv_step(m, m_t);
             for (i = 0; i < DN_OUT_FRAMES; i++) {
                 int l = p[0], r = p[1];
                 int dq = (base << 16) + span * l0 * 2;
@@ -234,7 +269,7 @@ void digiwave_render_out(void)
             ed = wv_shf_dep < 0 ? 0 : wv_shf_dep > 127 ? 127 : wv_shf_dep;
             w_t = (on && ed != 64) ? 32767 : 0;         /* neutral = dry */
             if (w_t == 0 && w == 0) { wv_primed = 0; return; }
-            wstep = (w_t - w) >> 5;
+            wstep = wv_step(w, w_t);
             inc2 = (unsigned)wv_ratio[ed];
             if (!wv_primed) {
                 r0 = r1 = ((wv_w + WV_N - WV_LEAD) & WV_MASK) << 16;
@@ -292,7 +327,7 @@ void digiwave_render_out(void)
             int d_t = on ? depth * 258 : 0;             /* neutral = centre */
             int dstep;
             if (d_t == 0 && dep == 0) return;           /* true bypass */
-            dstep = (d_t - dep) >> 5;
+            dstep = wv_step(dep, d_t);
             for (i = 0; i < DN_OUT_FRAMES; i++) {
                 int att = dn_mul15(l0, dep);
                 int gl = 32767, gr = 32767;
@@ -310,7 +345,7 @@ void digiwave_render_out(void)
             int d_t = on ? depth : 64;                  /* neutral = 64 (1.0) */
             int dstep;
             if (d_t == 64 && d == 64) return;           /* true bypass */
-            dstep = (d_t - d) >> 5;
+            dstep = wv_step(d, d_t);
             for (i = 0; i < DN_OUT_FRAMES; i++) {
                 int l = p[0], r = p[1];
                 int m = (l + r) >> 1;

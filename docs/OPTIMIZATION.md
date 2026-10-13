@@ -195,7 +195,7 @@ Ordered roughly by how much they bought.
 - **The unused MIDI-track 64-byte block.** Each pattern's four MIDI tracks
   leave `track+0x100` zero in all 128 slots and the OS never writes it;
   `digictl` uses `pattern+0x1040` for the **"DGX1"** per-pattern store
-  (`v8`, 25 int16, 58 of 64 bytes).
+  (`v10`, 28 int16, 64 of 64 bytes — full).
 - **The parked LFO bridge** (`digimod_dest`/`digimod_voice`, per-voice FLTR
   FREQ read at `0x80003544`) is kept in the store but has no page yet.
 - **The stock CC router** (`0x400ED94E`) is hooked once (`cc_glue.s`, `op:"jmp"`)
@@ -260,3 +260,11 @@ Pending:
 6. **`.fast` SRAM**: blocked — the DN device profile claims no `.fast` area and
    the render block is not self-contained (`docs/FAST-AUDIO-DN.md`).
 7. **Reconsider `-O3`** only if a measured render-margin win appears.
+8. **Shrink the delay line** (the 16 KB DDR allocation is the biggest cost, and
+   DDR accesses cost more than the instruction count implies). Trade quality for
+   footprint/CPU, best for lo-fi modes: **downsample** the line (one write per 2
+   samples, interpolated reads → half the writes/DDR traffic), **cap to 12 bits**
+   (`int16` line → ~8 KB, big quantization on the 24-bit bus), or **shorten
+   `WV_N`** (2048 → 1024, ~21 ms is plenty for WOB/FLAN/SHFT). Measure with a
+   bounded `gui.snap` + `emu.cftiming` pass. The flush/prime in §6 (flanger
+   residue) and this can be done together.

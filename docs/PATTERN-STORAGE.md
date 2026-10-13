@@ -40,23 +40,35 @@ at `t=4..7`). Every track has a 64-byte area at `track_t + 0x100`:
 
 ## The layout
 
-`digictl` keeps **25 parameters** there (8 + 2*25 = 58 of the 64 bytes):
+`digictl` keeps **28 parameters** there (8 + 2*28 = 64 bytes, the whole block):
 
 ```
 +0..3   "DGX1" magic
-+4..5   version (8)
-+6..7   count (25)
-+8..    25 x int16, big-endian, in DN_STORE order
++4..5   version (10)
++6..7   count (28)
++8..    28 x int16, big-endian, in DN_STORE order
 ```
 
-The 25 params are ring (on, depth, rate), EQ (on, lo, hi), fold (on, amount,
+The 28 params are ring (on, depth, rate), EQ (on, lo, hi), fold (on, amount,
 mode), meter (on), the parked LFO bridge (dest, voice), **crush** (on, mode,
-amount, tune) and **wave** (on, pmode, smode, page, speed, pitch depth, stereo
-depth, mix, fb). Older versions: 3 dropped the per-voice-filter params, 6 added
-CRUSH/WAVE, 7 added the split WAVE page/mode params, 8 split the WAVE depth into
-an independent **pitch** depth and **stereo** depth. An older block fails the
-magic check and is treated as a fresh pattern, so it starts from the live
-values.
+amount, tune), **wave PITCH** (on, pmode, pitch depth), **wave STEREO** (on,
+smode, stereo depth) and the shared wave page / speed / mix / fb. Older
+versions: 3 dropped the per-voice-filter params, 6 added CRUSH/WAVE, 7 added the
+split WAVE page/mode params, 8 split the WAVE depth into an independent
+**pitch** depth and **stereo** depth, 9 added the WASH macro, 10 split the WAVE
+on/off into independent PITCH and STEREO enables (`digiwave_on` /
+`digiwave_son`). An older block fails the magic check and is treated as a fresh
+pattern, so it starts from the live values. Block 1 is now **full** (64/64
+bytes).
+
+## The second block (macros)
+
+Block 1 holds the FX + WASH. The extra macros (**RADIO / DESTROY / SPACE**,
+on + amount each) live in a **second block** at `pattern + 0x1410` (MIDI track
+1's unused 64-byte area), magic **`"DGX2"` v1 / 6 params** (8 + 2*6 = 20 bytes).
+It has its own `dn_store2_sync` / guard, called on the same UI tick, so the
+macros save and reload with the pattern exactly like the rest. More macros (or
+params) can go in the other runs (`+0x17E0`, `+0x1BB0`).
 
 ## The sync and the adopt guard
 
