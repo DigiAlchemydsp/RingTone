@@ -24,7 +24,7 @@ updated: `docs/OPTIMIZATION.md`.
 | 12 | Delay line: downsample / 12-bit / shorter | **high** | M | med | yes (trade) | pending |
 | 13 | Hot tables to `.fast` SRAM | high | L | high | none | pending |
 | 14 | Store-sync gating | low | S | low | none | **landed** |
-| 15 | Compiler flags / unroll / alignment | med | S | low | none | pending |
+| 15 | Compiler flags / unroll / alignment | med | S | low | none | **rejected** |
 
 Landed-item numbers live in `docs/OPTIMIZATION.md` §9 (perf-opt ledger).
 
@@ -209,6 +209,17 @@ immediate. Instructions −25,867 over a 1 s run; cycles neutral in `cftiming`
 - Manual **2–4× loop unroll** on the hot loops (ring/EQ/fold/wave inner).
 - `__attribute__((aligned(16)))` on `wv_buf` and the tables.
 **Impact:** med; measure each. **Verify:** `.run`/`.bss` + `cftiming`.
+
+**Status: rejected (flags) / deferred (unroll, alignment).** `-O3
+-fno-tree-loop-distribute-patterns` on `tonefx` was measured and is a
+**regression**, not a win: `.run` 27199 → 32997 (+21 %), and `cftiming` render
+worst 99572 → **99971** cyc, p99 99506 → 99957, mean 99143.5 → **99536.7**,
+margin 0.4026 → **0.4002**, with *more* total instructions (45,795,699 →
+45,943,021) — the loop transforms pessimize the render. Reverted. The unroll and
+`aligned(16)` sub-items remain: `cftiming` models instruction cycles but not
+DDR/cache bursts, so alignment cannot be credited with a measured win here, and
+manual unroll is speculative and code-bloating; both are parked pending a
+hardware or burst-aware measurement.
 
 ---
 

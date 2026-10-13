@@ -162,7 +162,11 @@ Ordered roughly by how much they bought.
 
     Kept at `-O2`: `-O3` nearly doubles the code (or +28 % without loop
     distribution) for an unmeasured cycle gain, and unrolling reintroduces a
-    `memset` dependency the no-libc build cannot satisfy.
+    `memset` dependency the no-libc build cannot satisfy. **Measured on the
+    `3.5d` suite (perf-opt): `-O3 -fno-tree-loop-distribute-patterns` is a
+    regression** — `.run` 27199 → 32997, `cftiming` render worst 99572 →
+    99971 cyc, mean 99143.5 → 99536.7, margin 0.4026 → 0.4002, and *more*
+    instructions. `-O2` stays.
 14. **Output ceiling (`digictl_limit_out`, order 64).** A cheap soft limiter on
     the final mix: below a knee (~-2.5 dBFS) it is transparent; above it the
     excess is halved and hard-capped at ~-0.7 dBFS, so a hot flanger-feedback /
