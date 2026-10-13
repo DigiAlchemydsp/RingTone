@@ -131,6 +131,7 @@ static int *const dn_fxparam[DN_STORE_N] = {
 static unsigned char *dn_store_blk;             /* block we last synced */
 static unsigned char dn_store_copy[8 + 2 * DN_STORE_N];
 static int dn_store_dirty;                      /* a page edit is pending */
+static int dn_sync_ph;                          /* ticks between block compares */
 
 static unsigned char *dn_store_slot(void)
 {
@@ -172,6 +173,10 @@ static void dn_store_sync(void)
     if (b == dn_store_blk) {
         if (dn_store_dirty) {
             dn_store_write(b);
+        } else if (dn_sync_ph++ & 7) {
+            return;                          /* nothing pending and no pattern
+                                              * switch: compare only every 8th
+                                              * tick (the adopt guard stays) */
         } else {
             for (i = 0; i < 8 + 2 * DN_STORE_N; i++)
                 if (b[i] != dn_store_copy[i])
@@ -215,6 +220,7 @@ static int *const dn_fxparam2[DN_STORE2_N] = {
 static unsigned char *dn_store2_blk;
 static unsigned char dn_store2_copy[8 + 2 * DN_STORE2_N];
 static int dn_store2_dirty;
+static int dn_sync2_ph;                         /* ticks between block compares */
 
 static unsigned char *dn_store2_slot(void)
 {
@@ -254,6 +260,8 @@ static void dn_store2_sync(void)
     if (b == dn_store2_blk) {
         if (dn_store2_dirty) {
             dn_store2_write(b);
+        } else if (dn_sync2_ph++ & 7) {
+            return;                          /* compare only every 8th tick */
         } else {
             for (i = 0; i < 8 + 2 * DN_STORE2_N; i++)
                 if (b[i] != dn_store2_copy[i])

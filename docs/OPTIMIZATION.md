@@ -282,6 +282,7 @@ repo (`Tone+FX`) is cut from `main` only.
 | 4 | Meter gated on visibility | `digimeter_render_out` returns unless `digictl_meter_active()` — a weak hook (undefined in a standalone meter build) that is true only while the FOLD page, the sole reader of `digimeter_l/r`, is up | 26707 → **26791** (+84) | 25566 → 25570 (+4) | 908 → 915 | FOLD/RING/TILT screenshots identical; render worst −408 cyc | **landed** |
 | 11 | Hoist per-sample block-constant branches | Split `crush` BITS into dither / no-dither loops and `fold` into drive / no-drive loops (GCC does not loop-unswitch at `-O2`); when a section is bypassed its loop is unchanged | 26791 → **26983** (+192) | 25570 | 915 | fold+crush output bit-identical by construction; pages unchanged | **landed** |
 | 5 | Ceiling gated on "hot" | `digictl_limit_out` returns unless `dn_fx_hot()` — a conservative any-section-could-overshoot check; the clean path then matches the stock OS, which has no ceiling | 26983 → **27155** (+172) | 25570 | 915 → 930 | limiter still runs when any FX is hot; pages unchanged | **landed** |
+| 14 | Store-sync gating | `dn_store_sync` / `dn_store2_sync` compare the block only every 8th UI tick (dirty writes and pattern switches still immediate); the adopt guard still runs, ≤ 8 ticks later | 27155 → **27199** (+44) | 25570 → 25578 (+8) | 930 → 934 | pattern-store test PASS | **landed** |
 
 **Item 1 detail.** Before: `digictl.c` had **36** `DN_FILLRECT` call *sites*; the
 per-pixel glyph path (`dg_glyph`, used by every 2x mode name and the `<`/`>`
@@ -343,3 +344,14 @@ FX forced neutral:
 −946-cycle worst, +0.57 pp. With the default FX (ring + EQ hot) the limiter
 still runs: render worst 99557 → 99572, margin 0.4027 → 0.4026 (the ~15-cycle
 hot-check, negligible). Pages unchanged.
+
+**Item 14 detail.** Each UI tick compared 84 bytes (store1 64 + store2 20) against
+its shadow. The compare now runs every 8th tick when nothing is pending and the
+pattern pointer has not moved; a dirty page edit and a pattern switch are still
+handled immediately, and the adopt guard (a stock write onto our block) is
+detected within 8 ticks. Measured over a 1 s session: instructions
+152,786,675 → **152,760,808** (−25,867, ≈ the 7/8 of the compare loops removed);
+cycles neutral in `cftiming` (the removed loads/compares overlap the tick's
+stalls), so this is an instruction/bus-read win, not a cycle one. Persistence
+verified: `tests/digiemu_pattern_store.py` PASS (`DGX1` magic and marker survive,
+per-pattern switch works).

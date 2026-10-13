@@ -23,7 +23,7 @@ updated: `docs/OPTIMIZATION.md`.
 | 11 | Hoist per-sample branches | low | S | low | none | **landed** |
 | 12 | Delay line: downsample / 12-bit / shorter | **high** | M | med | yes (trade) | pending |
 | 13 | Hot tables to `.fast` SRAM | high | L | high | none | pending |
-| 14 | Store-sync gating | low | S | low | none | pending |
+| 14 | Store-sync gating | low | S | low | none | **landed** |
 | 15 | Compiler flags / unroll / alignment | med | S | low | none | pending |
 
 Landed-item numbers live in `docs/OPTIMIZATION.md` §9 (perf-opt ledger).
@@ -196,6 +196,11 @@ extended. **Impact:** potentially high (SRAM vs DDR).
 comparing 64 bytes every UI tick. Compare only every Nth tick, or short-circuit
 when neither the pattern pointer nor a dirty flag changed (keep the periodic
 compare for the adopt guard). **Impact:** small.
+
+**Status: landed.** The compare runs every 8th tick when nothing is pending and
+the pattern pointer is unchanged; dirty writes and pattern switches stay
+immediate. Instructions −25,867 over a 1 s run; cycles neutral in `cftiming`
+(instruction/bus-read win, not a cycle one). `digiemu_pattern_store.py` PASS.
 
 ## 15. Compiler flags / unroll / alignment
 
