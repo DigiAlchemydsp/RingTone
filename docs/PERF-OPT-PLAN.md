@@ -121,6 +121,15 @@ to one sine per block + a linear per-sample step, exactly like `digiwave`'s LFO
 (`wv_sin` + `lstep`). **Impact:** ~28→~20 insn/frame. **Verify:** same carrier
 shape (A/B).
 
+**Review note (perf-opt): needs care — not a plain drop-in.** `digiwave`'s LFO
+tops out at ~12 Hz, so one sine per block (32 samples = 21 ms) is ~0.25 of a
+cycle and the linear step is exact enough. **`digiring`'s carrier is audio-rate**:
+`ft = 1 + freq*15` is 1..1906 Hz, up to **~1.3 carrier cycles per block**, so a
+single block-rate sine + linear step would alias the carrier badly. A safe form
+would have to keep per-sample phase and only block-rate the *value*, and/or
+switch to the block-rate path only below a low-frequency threshold. Treat #8 as
+a quality/CPU trade to be measured, not the "audio: none" the summary says.
+
 ## 9. SHFT trim
 
 **Where:** `wave.c` SHFT does 8 loads + 4 interp muls/sample. Options: nearest
