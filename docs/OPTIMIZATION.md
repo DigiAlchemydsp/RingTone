@@ -280,6 +280,7 @@ repo (`Tone+FX`) is cut from `main` only.
 |---|---|---|---|---|---|---|---|
 | 1 | Direct framebuffer UI drawing | `dg_px`/`dg_fill` write the 1 bpp panel bytes at `fb_front` (`0x40241a44`) directly, in the stock coordinate frame (display row `63-y`); all page graphics (glyphs, dots, spans, clears) stop calling `DN_FILLRECT` | 26863 → **26707** (−156) | 25562 → 25566 (+4) | 917 → 908 | RING/FOLD/TILT screenshots **pixel-identical** | **landed** |
 | 4 | Meter gated on visibility | `digimeter_render_out` returns unless `digictl_meter_active()` — a weak hook (undefined in a standalone meter build) that is true only while the FOLD page, the sole reader of `digimeter_l/r`, is up | 26707 → **26791** (+84) | 25566 → 25570 (+4) | 908 → 915 | FOLD/RING/TILT screenshots identical; render worst −408 cyc | **landed** |
+| 11 | Hoist per-sample block-constant branches | Split `crush` BITS into dither / no-dither loops and `fold` into drive / no-drive loops (GCC does not loop-unswitch at `-O2`); when a section is bypassed its loop is unchanged | 26791 → **26983** (+192) | 25570 | 915 | fold+crush output bit-identical by construction; pages unchanged | **landed** |
 
 **Item 1 detail.** Before: `digictl.c` had **36** `DN_FILLRECT` call *sites*; the
 per-pixel glyph path (`dg_glyph`, used by every 2x mode name and the `<`/`>`
@@ -307,3 +308,20 @@ just runs as before. Measured with a bounded `cftiming` pass
 
 The −408-cycle worst/p99 and +0.24 pp margin are the skipped scan; on the FOLD
 page the scan still runs, and the FOLD screenshot is byte-identical to `3.5d`.
+
+**Item 11 detail.** `crush` BITS tested `if (dith)` every sample and `fold`
+tested `if (dg)` every sample, both block-constant. Splitting each into two
+specialized loops removes 32 branches per block and lets the simpler variant
+(the `p &= mask` loop; the fold-only loop) schedule tighter. Measured with a
+bounded `cftiming` pass and the FX forced on (`fold` TRSH amount 100, `crush`
+BITS amount 100 tune 40; addresses poked from `testout/*.map.json`):
+
+| | worst cyc | p99 cyc | mean cyc | deadline margin |
+|---|---|---|---|---|
+| `3.5d` loops | 104579 | 104565 | 104152.7 | 0.3726 |
+| split loops | **104158** | **104158** | **103707.7** | **0.3751** |
+
+−421-cycle worst and +0.25 pp margin for +192 B of `.run` (flash spare ~1.68 MB,
+RAM unchanged). Output is bit-identical (same operations, reordered into two
+loops); the bypassed path returns before either loop, so inactive blocks are
+unchanged.

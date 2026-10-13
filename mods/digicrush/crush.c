@@ -90,18 +90,26 @@ void digicrush_render_out(void)
     lfsr = dc_lfsr;
 
     if (dc_mode == DC_MODE_BITS) {
-        int mask = dc_mask, dith = dc_dither;
-        for (i = 0; i < DN_OUT_FRAMES; i++) {
-            int l = p[0], r = p[1];
-            if (dith) {
+        int mask = dc_mask;
+        if (dc_dither) {                       /* dither is block-constant: split
+                                                * the loop so the branch is not
+                                                * tested 32x per block */
+            for (i = 0; i < DN_OUT_FRAMES; i++) {
+                int l = p[0], r = p[1];
                 lfsr = lfsr * 1664525u + 1013904223u;
                 l += (int)(lfsr >> 26) - (int)(lfsr >> 27);
                 lfsr = lfsr * 1664525u + 1013904223u;
                 r += (int)(lfsr >> 26) - (int)(lfsr >> 27);
+                p[0] = l & mask;
+                p[1] = r & mask;
+                p += 2;
             }
-            p[0] = l & mask;
-            p[1] = r & mask;
-            p += 2;
+        } else {
+            for (i = 0; i < DN_OUT_FRAMES; i++) {
+                p[0] &= mask;
+                p[1] &= mask;
+                p += 2;
+            }
         }
         dc_lfsr = lfsr;
     } else if (dc_mode == DC_MODE_SR) {

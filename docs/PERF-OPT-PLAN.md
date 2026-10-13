@@ -20,7 +20,7 @@ updated: `docs/OPTIMIZATION.md`.
 | 8 | Ring LFO → block-rate | med | S | low | none | pending |
 | 9 | SHFT trim (2nd grain) | med | M | med | tiny | pending |
 | 10 | Cheap `dn_q15` blend option | med | S | low | lo-fi modes only | pending |
-| 11 | Hoist per-sample branches | low | S | low | none | pending |
+| 11 | Hoist per-sample branches | low | S | low | none | **landed** |
 | 12 | Delay line: downsample / 12-bit / shorter | **high** | M | med | yes (trade) | pending |
 | 13 | Hot tables to `.fast` SRAM | high | L | high | none | pending |
 | 14 | Store-sync gating | low | S | low | none | pending |
@@ -157,6 +157,12 @@ is ~-36 dB noisier but cheaper. Add a per-mode/`const` switch or a build flag.
 **Where:** e.g. `crush.c` BITS dither `if (dith)` inside the loop. Split into two
 loop variants (dither on/off) selected once per block. Sweep all modules for
 per-sample conditionals on block-constant values. **Impact:** small.
+
+**Status: landed.** The only block-constant per-sample branches were `crush`
+BITS `if (dith)` and `fold` `if (dg)`; `wave`'s per-sample tests are all
+data-dependent (clamps, grain wrap, pan sign) and could not be hoisted. Both
+split; cftiming with the FX forced on: render worst 104579 → 104158 cyc, p99
+104565 → 104158, margin 37.26% → 37.51%. Bit-identical (same ops).
 
 ## 12. Delay line footprint (downsample / 12-bit / shorter)
 

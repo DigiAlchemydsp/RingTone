@@ -104,13 +104,18 @@ void digifold_render_out(void)
     gain = df_gain(fp, df_amt_cur);
     dg = df_drive_gain(dp, df_amt_cur);
     p = (int *)(DN_OUT_BASE + df_off);
-    for (i = 0; i < DN_OUT_FRAMES; i++) {
-        p[0] = df_fold(p[0], gain);
-        p[1] = df_fold(p[1], gain);
-        if (dg) {
-            p[0] = df_drive(p[0], dg);
-            p[1] = df_drive(p[1], dg);
+    if (dg) {                           /* overdrive is block-constant: split the
+                                         * loop so the branch is not tested 32x */
+        for (i = 0; i < DN_OUT_FRAMES; i++) {
+            p[0] = df_drive(df_fold(p[0], gain), dg);
+            p[1] = df_drive(df_fold(p[1], gain), dg);
+            p += 2;
         }
-        p += 2;
+    } else {
+        for (i = 0; i < DN_OUT_FRAMES; i++) {
+            p[0] = df_fold(p[0], gain);
+            p[1] = df_fold(p[1], gain);
+            p += 2;
+        }
     }
 }
