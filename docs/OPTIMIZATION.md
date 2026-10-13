@@ -281,6 +281,7 @@ repo (`Tone+FX`) is cut from `main` only.
 | 1 | Direct framebuffer UI drawing | `dg_px`/`dg_fill` write the 1 bpp panel bytes at `fb_front` (`0x40241a44`) directly, in the stock coordinate frame (display row `63-y`); all page graphics (glyphs, dots, spans, clears) stop calling `DN_FILLRECT` | 26863 → **26707** (−156) | 25562 → 25566 (+4) | 917 → 908 | RING/FOLD/TILT screenshots **pixel-identical** | **landed** |
 | 4 | Meter gated on visibility | `digimeter_render_out` returns unless `digictl_meter_active()` — a weak hook (undefined in a standalone meter build) that is true only while the FOLD page, the sole reader of `digimeter_l/r`, is up | 26707 → **26791** (+84) | 25566 → 25570 (+4) | 908 → 915 | FOLD/RING/TILT screenshots identical; render worst −408 cyc | **landed** |
 | 11 | Hoist per-sample block-constant branches | Split `crush` BITS into dither / no-dither loops and `fold` into drive / no-drive loops (GCC does not loop-unswitch at `-O2`); when a section is bypassed its loop is unchanged | 26791 → **26983** (+192) | 25570 | 915 | fold+crush output bit-identical by construction; pages unchanged | **landed** |
+| 5 | Ceiling gated on "hot" | `digictl_limit_out` returns unless `dn_fx_hot()` — a conservative any-section-could-overshoot check; the clean path then matches the stock OS, which has no ceiling | 26983 → **27155** (+172) | 25570 | 915 → 930 | limiter still runs when any FX is hot; pages unchanged | **landed** |
 
 **Item 1 detail.** Before: `digictl.c` had **36** `DN_FILLRECT` call *sites*; the
 per-pixel glyph path (`dg_glyph`, used by every 2x mode name and the `<`/`>`
@@ -325,3 +326,20 @@ BITS amount 100 tune 40; addresses poked from `testout/*.map.json`):
 RAM unchanged). Output is bit-identical (same operations, reordered into two
 loops); the bypassed path returns before either loop, so inactive blocks are
 unchanged.
+
+**Item 5 detail.** The output ceiling looped all 32 frames every block. It only
+matters when a section can push the mix past its knee; when nothing is hot it is
+a no-op (the factory pattern peaks near `2^21`, well under the `0x600000`
+knee), and the stock OS has no ceiling at all — so skipping it is exactly the
+raw mix the stock code always produced. `dn_fx_hot()` is conservative (ring
+depth, EQ off-flat, fold/crush amount, any WAVE mode, any macro). cftiming, all
+FX forced neutral:
+
+| | worst cyc | p99 cyc | mean cyc | deadline margin |
+|---|---|---|---|---|
+| always limit | 96086 | 96086 | 95682.2 | 0.4235 |
+| gated | **95140** | **95140** | **94701.2** | **0.4292** |
+
+−946-cycle worst, +0.57 pp. With the default FX (ring + EQ hot) the limiter
+still runs: render worst 99557 → 99572, margin 0.4027 → 0.4026 (the ~15-cycle
+hot-check, negligible). Pages unchanged.

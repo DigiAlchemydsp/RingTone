@@ -628,10 +628,34 @@ static inline int dn_lmt(int x)
     return s * a;
 }
 
+/* Could any section push the mix past the limiter's knee? Conservative: a
+ * section counts as hot if it is doing anything that can raise the level. With
+ * nothing hot the limiter is skipped entirely -- and that matches the stock OS,
+ * which has no ceiling, so the clean path is not just equal but byte-for-byte
+ * what the raw mix always was. */
+static int dn_fx_hot(void)
+{
+    if (digiring_on && digiring_depth > 0)
+        return 1;
+    if (digieq_on && (digieq_lo != 64 || digieq_hi != 64))
+        return 1;
+    if (digifold_on && digifold_amount > 0)
+        return 1;
+    if (digicrush_on && digicrush_amount > 0)
+        return 1;
+    if (digiwave_on || digiwave_son)            /* any WAVE mode can change level */
+        return 1;
+    if (digiwash_on || dgmac2_on || dgmac3_on || dgmac4_on)
+        return 1;
+    return 0;
+}
+
 void digictl_limit_out(void)
 {
     int *p = (int *)(DN_OUT_BASE + dc_out);
     int i;
+    if (!dn_fx_hot())
+        return;                                 /* nothing can overshoot: skip */
     for (i = 0; i < DN_OUT_FRAMES; i++) {
         p[0] = dn_lmt(p[0]);
         p[1] = dn_lmt(p[1]);

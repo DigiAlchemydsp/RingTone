@@ -14,7 +14,7 @@ updated: `docs/OPTIMIZATION.md`.
 | 2 | Fuse the master passes | **very high** | L | med | none | pending |
 | 3 | Partial screen clear | med | S | low | none | pending |
 | 4 | Meter gated on visibility | med | S | low | none | **landed** |
-| 5 | Ceiling gated on "hot" | low–med | S | low | none | pending |
+| 5 | Ceiling gated on "hot" | low–med | S | low | none | **landed** |
 | 6 | Cache `dn_out_off()` | low | S | low | none | **rejected** |
 | 7 | EMAC for the multiplies | **high** | L | med | none | pending |
 | 8 | Ring LFO → block-rate | med | S | low | none | pending |
@@ -97,6 +97,13 @@ unchanged (screenshot identical).
 **Where:** `digictl_limit_out` (order 64) runs every block. Track an "any hot
 setting" flag (flanger feedback > 0, SHFT active, fold/crush drive > 0) and skip
 the limiter when nothing can overshoot — or fold it into #2. **Impact:** small.
+
+**Status: landed.** `dn_fx_hot()` (conservative: ring depth, EQ non-flat,
+fold/crush amount, any WAVE mode, any macro) gates the limiter. All clean:
+cftiming render worst 96086 → 95140 cyc, p99 96086 → 95140, margin 42.35% →
+42.92%. When hot the limiter runs as before (default FX: margin 0.4027 →
+0.4026, the ~15-cycle check). Pages identical. Note this bends the original
+low–med rating — the win is ~950 cyc whenever the mix is clean.
 
 ## 6. Cache `dn_out_off()`
 
