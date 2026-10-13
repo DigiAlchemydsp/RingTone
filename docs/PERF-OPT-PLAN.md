@@ -11,8 +11,8 @@ updated: `docs/OPTIMIZATION.md`.
 | # | item | impact | effort | risk | audio | status |
 |---|---|---|---|---|---|---|
 | 1 | Direct framebuffer UI drawing | **high** | M | low | none | **landed** |
-| 2 | Fuse the master passes | **very high** | L | med | none | pending |
-| 3 | Partial screen clear | med | S | low | none | pending |
+| 2 | Fuse the master passes | **very high** | L | med | none | parked |
+| 3 | Partial screen clear | med | S | low | none | obviated |
 | 4 | Meter gated on visibility | med | S | low | none | **landed** |
 | 5 | Ceiling gated on "hot" | low–med | S | low | none | **landed** |
 | 6 | Cache `dn_out_off()` | low | S | low | none | **rejected** |
@@ -72,12 +72,28 @@ exact order and each section's true bypass.
 win. **Risk:** refactor; keep bit-identical output on the factory pattern
 (A/B the buffer in digiemu). **Verify:** `emu.cftiming` before/after + A/B audio.
 
+**Review note (perf-opt): parked — real but large; ROI on the order of #5.**
+The audio-render vector's worst run is ~99.5k cycles of a 166.7k period, and the
+*whole suite* is only a few thousand of those (ring + EQ + ceiling ≈ 2,400
+insn/block). Fusing the six `ev_render_out` passes removes the redundant
+load/store of 32 frames across five extra passes (~640 memory ops/block), worth
+several hundred cycles — a deadline-margin gain comparable to #5's +0.57 pp, but
+for a refactor of six modules into one fused loop with shared per-frame state
+and a bit-exact A/B. Sound, but not a drive-by: park it for a focused pass. (A
+cheaper partial version — fusing only the two heaviest adjacent stages — does
+not capture the cross-stage load/store saving, so it is not worth it either.)
+
 ## 3. Partial screen clear
 
 Every page clears the whole drawable area (`FILLRECT(0,0,127,52,0)`) then
 redraws. Clear only the region a page animates (a band), or skip the clear on
 static pages. **Where:** the `dg_*_page` prologues. **Impact:** med; pairs with
 #1.
+
+**Status: obviated by #1.** After #1 the full clear is direct byte writes
+(~896 byte RMW per redraw) at the ~10 Hz redraw cadence — a negligible fraction
+of the render. A partial clear would risk ghosting when a graphic shrinks, for
+no measurable gain. Dropped.
 
 ## 4. Meter gated on visibility
 
