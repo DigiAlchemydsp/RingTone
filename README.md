@@ -1,13 +1,12 @@
-# RingTone
+# Tone+FX — development source
 
-**Master ringmod / wavefolding / EQ for the Digitone mk1.**
+**A master effect suite for the Digitone mk1 / Digitone Keys (OS 1.43).**
 
-> **This suite has a new home: [Tone+FX](https://github.com/DigiAlchemydsp/Tone-FX/releases).**
-> RingTone was the first cut; it now ships packaged as the **Tone+FX** suite
-> (ring, EQ, fold, meter and the DIGI pages). **Download the
+> This is the **development/source** repo (remote still named `RingTone`). The
+> **release** repo — built `.elemod`s, docs and packaged releases — is
+> [Tone+FX](https://github.com/DigiAlchemydsp/Tone-FX/releases). **Download the
 > latest release from
 > [github.com/DigiAlchemydsp/Tone-FX/releases](https://github.com/DigiAlchemydsp/Tone-FX/releases).**
-> This repo is kept for reference until it is merged/deprecated.
 
 ![The RING page on the Digitone mk1](docs/img/ui-ring.png)
 
@@ -34,7 +33,7 @@ The master chain is **ring → EQ → crush → fold → wave → meter**:
 | `digifold` | **fold** | a triangle wavefolder with CLEAN/MUD/DIST/TRSH fold modes + an internal overdrive |
 | `digiwave` | **wave** | one modulation engine, two pages: **PITCH** (WOB wobble, SHFT shift) and **STEREO** (FLAN flanger, PAN autopan, WIDE width) |
 | `digimeter` | **meter** | L/R peak bars, drawn on the DIGI FOLD page |
-| `digictl` | **pages** | the RING / FOLD / TILT / CRUSH / PITCH / STEREO master pages (FUNC+LFO) that edit the FX |
+| `digictl` | **pages** | the RING / FOLD / TILT / CRUSH / PITCH / STEREO / PERFORM master pages (FUNC+LFO) that edit the FX; the PERFORM page's trigs are momentary performance pads |
 
 `digictl` requires the FX mods, so **install them as a set**: build with
 `core-dn1` plus all the suite mods.
@@ -46,10 +45,11 @@ The master chain is **ring → EQ → crush → fold → wave → meter**:
 ## Use
 
 The pages live on the master page tree: **FUNC + LFO** cycles the master pages,
-and our three pages are appended after the stock ones. **LEFT / RIGHT** (or the
-on-screen `<` `>` arrows) rotate the whole master page list; the stock top
-status bar stays above every page. PAGE keeps its stock meaning everywhere; no
-stock key or encoder is taken.
+and our seven pages are appended after the stock ones. **LEFT / RIGHT** (or the
+on-screen `<` `>` arrows) rotate the whole master page list, and **UP** jumps to
+the PERFORM page from any of the other six. The stock top status bar stays above
+every page. PAGE keeps its stock meaning everywhere; no stock key or encoder is
+taken.
 
 - **RING** — **A** on/off, **E** depth, **F** frequency. A centred ring
   animation (the marker circles at the carrier rate and jitters with the
@@ -68,6 +68,12 @@ stock key or encoder is taken.
 - **STEREO** — **A** on/off, **D** mode (FLAN/PAN/WIDE), **E** speed, **F** depth,
   **G** mix, **H** feedback. A horizontal line that ripples (FLAN), splits into
   two moving apart (PAN) or spreads (WIDE).
+- **PERFORM** — a static page (no animation). **A** ring depth, **B** fold
+  amount, **C** crush amount, **D** WAVE pitch depth, **E** WAVE stereo depth,
+  **F** EQ low, **G** EQ high, **H** WAVE speed. The 16 trigs are momentary
+  performance pads, one block per engine (`1 2 9 10` ring, `3 4` fold, `11 12`
+  crush, `5 6 13 14` pitch, `7 8 15 16` stereo): hold a pad and the engine turns
+  on and its depth ramps up; release restores the saved pattern value.
 
 The **fold type** is a continuous 0–127 knob spread over four modes — CLEAN
 (36% fold), MUD (full fold), DIST (36% fold + hard-clip overdrive) and TRSH
@@ -83,17 +89,18 @@ The master effects (EQ, ring, fold) are on by default.
 
 ## Pages
 
-Six master pages (**FUNC + LFO**; **LEFT/RIGHT** rotates). Each new page has a
-frameless animated graphic in the leftmost third that collapses to a line when
-the effect is at neutral.
+Seven master pages (**FUNC + LFO**; **LEFT/RIGHT** rotates; **UP** opens
+PERFORM from any of the other six). Each FX page has a frameless animated
+graphic in the leftmost third that collapses to a line when the effect is at
+neutral; PERFORM is static.
 
 | RING | FOLD | TILT |
 |---|---|---|
 | ![RING](docs/img/ui-ring.png) | ![FOLD](docs/img/ui-fold.png) | ![TILT](docs/img/ui-tilt.png) |
 
-| CRUSH | PITCH | STEREO |
-|---|---|---|
-| ![CRUSH](docs/img/ui-crush.png) | ![PITCH](docs/img/ui-pitch.png) | ![STEREO](docs/img/ui-stereo.png) |
+| CRUSH | PITCH | STEREO | PERFORM |
+|---|---|---|---|
+| ![CRUSH](docs/img/ui-crush.png) | ![PITCH](docs/img/ui-pitch.png) | ![STEREO](docs/img/ui-stereo.png) | ![PERFORM](docs/img/ui-perform.png) |
 
 ## CPU footprint
 
@@ -161,7 +168,7 @@ $stock = "<your> Digitone_and_Digitone_Keys_OS1.43.syx"
 $core  = "<elekloader>\mods\core-dn1\out\core-2.0a.elemod"
 python -m elekloader.sdk.build "mods\tonefx" --stock $stock
 python -m elekloader.patch --stock $stock --mod $core `
-  --mod mods\tonefx\out\tonefx-2.3c.elemod --out custom.syx --version 2.3c
+  --mod mods\tonefx\out\tonefx-3.2b.elemod --out custom.syx --version 3.2b
 ```
 
 The components (`digimeter`, `digieq`, `digiring`, `digifold`, `digictl`) can
@@ -169,21 +176,20 @@ still be built and combined individually.
 
 ## Status
 
-**Work in progress.** The suite is stress-tested on real hardware over 3 days:
-**PASS** (a Digitone mk1) and in the **digiemu** emulator (boot/settle,
-`dsp_running=2`; the master pages draw; per-pattern persistence and the MIDI-CC
-hook are tested). Done:
-pattern-level save/reload, stock 0–127 controls, MIDI CC, one merged `tonefx`
-mod, and encoder steps that now match stock (one step per encoder detent, with
-the driver's own acceleration). Remaining:
-
-- a **hardware audio pass** of the FX themselves;
-- small UI polish.
+Current build **`tonefx 3.2b`**. Tested in the **digiemu** emulator (boot/settle,
+`dsp_running=2`; all seven pages; a live-audio check of the PERFORM pads) and
+**stress-tested on two Digitone mk1 units — in parallel and in series — over
+synths, drums, vocals and master tracks (including vinyl)**. Done: pattern-level
+save/reload, stock 0–127 controls, MIDI CC, one merged `tonefx` mod, the
+PERFORM performance page, and encoder steps that match stock (one step per
+encoder detent, with the driver's own acceleration). Remaining: a formal
+headroom measurement, and the tracked follow-ups (see
+[`HANDOFF.md`](HANDOFF.md) and the release README's "Known bugs / future fixes").
 
 ## Parked / future work (branches + docs; NOT in the release)
 
-The release (`Tone+FX` 2.3c) is the ring / EQ / fold / meter suite + MIDI CC only.
-These are parked for later:
+The current release (`Tone+FX` 3.2b) is the seven-page suite (incl. PERFORM) +
+MIDI CC. These are parked for later:
 
 - **Sequencer p-lock automation for the FX params** — branch `tonefx-plock`,
   `docs/PLOCK-AUTOMATION.md` (on the branch): let the internal sequencer
@@ -202,12 +208,15 @@ These are parked for later:
 ```powershell
 python tests/digiemu_fx_screenshots.py --fw <dn1-...>               # RING / FOLD / TILT screenshots
 python tests/digiemu_nav.py --fw <dn1-...>                          # LEFT/RIGHT page navigation
-python tests/digiemu_pattern_store.py --fw <dn1-...>                # per-pattern settings
+python tests/digiemu_pattern_store.py --fw <dn1-...>                # per-pattern settings (v8)
 python tests/digiemu_midi_cc.py --fw <dn1-...> --map <syx.map.json> # MIDI CC hook
+python tests/_diag_perf.py --fw <dn1-...>                           # PERFORM page, UP nav, encoder->store
+python tests/_diag_perf_live.py --fw <dn1-...>                      # live SSI: the engine-split pads
 ```
 
 (The `digiemu_*` tests need the patched-Unicorn venv; `--fw` is a firmware the
-app built from `core-dn1` + the mods.)
+app built from `core-dn1` + the mods. `_diag_perf.py` reads the patch's
+`*.syx.map.json` for symbol addresses.)
 
 ## Licence
 
