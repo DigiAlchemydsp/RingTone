@@ -260,6 +260,7 @@ hardware or burst-aware measurement.
 
 - Changing the FX algorithms/sound (only quality/CPU trades in #9/#10/#12).
 - The other open bugs in `HANDOFF.md` §6/§8 (PAGE jump, PITCH on note-off,
-  microtiming, yellow LEDs) — separate fixes. **The flanger/pitch link is done**
-  on this branch (separate FLAN line, landed with #12); see `OPTIMIZATION.md`
-  §10.1.
+  yellow LEDs) — separate fixes. **The flanger/pitch link is done** on this
+  branch (separate FLAN line, landed with #12; plus the FLAN-bypass ramp fix),
+  and **the MIDI-track microtiming / key leak is fixed** (view-closed guard);
+  see `OPTIMIZATION.md` §10.1, §10.3, §10.4.

@@ -422,3 +422,19 @@ which is why toggling PITCH "fixed" it.
 Fix: `wv_fla_mix = m;`. Verified with the symbol map: FLAN on →
 `wv_fla_mix` 25792 (target 25800); FLAN off → **0** (was stuck at the target
 before). With this and §10.1, switching FLAN off now bypasses cleanly.
+
+### 10.4 Key/encoder handlers stayed armed after the master view closed (HANDOFF §8)
+
+**Bug:** `digictl_key` / `digictl_enc` gate on `master_live()`, which only tested
+the view's vtable plus the decaying `dc_vis` countdown, and `digictl_tick`
+re-invalidated the view while `dc_vis > 0`. A closed-but-still-allocated master
+view therefore kept consuming LEFT/RIGHT (and UP/trigs), so in the sequencer
+"hold a trig + arrows" microtiming did not nudge, and encoder turns leaked
+(volume jumps) — HANDOFF §8 item 3.
+
+**Fix:** the DN view object carries a **"closed" byte at `view + 0x30`** —
+`view_activate` clears it (`0x400e53da`) and `view_close` sets it
+(`0x400e51e6`). `master_live` now requires `*((unsigned char *)v + 0x30) == 0`,
+and `digictl_tick` stops invalidating (and forces `dc_vis = 0`) once the view is
+closed. Verified: with the view open RIGHT rotates the pages; with `+0x30 = 1`
+(simulated close) RIGHT no longer touches the index and the tick disarms.

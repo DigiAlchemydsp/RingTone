@@ -652,10 +652,20 @@ void digictl_limit_out(void)
     }
 }
 
-/* Alive (its primary vtable is still ours) AND drawn recently. */
+/* The master view is ours AND still open. view+48 is the view's "closed" byte:
+ * view_activate clears it (0x400e53da) and view_close sets it (0x400e51e6), so
+ * a view that was closed but is still allocated cannot keep our key/encoder
+ * handlers armed. Without this the decaying dc_vis window kept eating keys
+ * meant for the sequencer (MIDI-track microtiming / volume). */
+static int dc_view_open(char *v)
+{
+    return v && *(int *)v == DN_MASTER_VT && *((unsigned char *)v + 48) == 0;
+}
+
+/* Alive (open) AND drawn recently. */
 static int master_live(char *v)
 {
-    return dc_vis > 0 && v && *(int *)v == DN_MASTER_VT;
+    return dc_vis > 0 && dc_view_open(v);
 }
 
 /* digimeter reads this (weak ref) to skip its per-block peak scan unless the
@@ -1340,11 +1350,13 @@ void digictl_tick(void *ctrl)
         dc_vis--;
     if (!dc_vis)
         dc_meter_vis = 0;                     /* left the page: stop the scan */
-    if (dc_vis > 0 && dc_view && *(int *)dc_view == DN_MASTER_VT) {
+    if (dc_vis > 0 && dc_view_open(dc_view)) {
         if (++dc_ctr >= dc_rate) {
             dc_ctr = 0;
             DN_INVALIDATE(dc_view);
         }
+    } else if (dc_view && !dc_view_open(dc_view)) {
+        dc_vis = 0;                           /* the view is closed: disarm now */
     }
 }
 
