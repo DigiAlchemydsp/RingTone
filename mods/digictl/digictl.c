@@ -706,18 +706,60 @@ static int dg_strw(const char *s, int sc)
     return w;
 }
 
+/* ---- direct framebuffer drawing ---------------------------------------------
+ * The panel is 1 bpp, column-major: byte = page + 8*column, page = 7-(row>>3),
+ * bit = row&7, row measured from the TOP of the panel; at master-view draw time
+ * the front buffer pointer is fb_front (0x40241a44), the buffer being composed
+ * (the same buffer the stock page draw writes). The stock DN_FILLRECT /
+ * DN_FRAMERECT cost a firmware call per pixel or span; these write the bytes
+ * directly. Coordinates are the stock ones (y = 0 at the BOTTOM), so a stock
+ * row y is display row 63-y. */
+#define DN_FBP (*(volatile unsigned *)0x40241a44u)
+static unsigned char *dg_fb;
+
+static void dg_fill(int x0, int y0, int x1, int y1, int c)
+{
+    int x, t;
+    if (x0 > x1) { t = x0; x0 = x1; x1 = t; }
+    if (y0 < y1) { t = y0; y0 = y1; y1 = t; }        /* y0 = the top row */
+    if (x0 < 0) x0 = 0;
+    if (x1 > 127) x1 = 127;
+    if (y1 < 0) y1 = 0;
+    if (y0 > 63) y0 = 63;
+    for (x = x0; x <= x1; x++) {
+        int rt = 63 - y0, rb = 63 - y1, p;
+        unsigned char *col = dg_fb + (x << 3);
+        for (p = rt >> 3; p <= (rb >> 3); p++) {
+            unsigned char m = 0xffu;
+            if (p == (rt >> 3)) m &= (unsigned char)(0xffu << (rt & 7));
+            if (p == (rb >> 3)) m &= (unsigned char)(0xffu >> (7 - (rb & 7)));
+            if (c) col[7 - p] |= m; else col[7 - p] &= (unsigned char)~m;
+        }
+    }
+}
+
+static void dg_px(int x, int y)
+{
+    int r;
+    if ((unsigned)x > 127u || (unsigned)y > 63u)
+        return;
+    r = 63 - y;
+    dg_fb[(7 - (r >> 3)) + (x << 3)] |= (unsigned char)(1u << (r & 7));
+}
+
 static void dg_glyph(void *bmp, int x, int ytop, int ch, int sc)
 {
     int w = DN_FW[ch & 0xff];
     int off = DN_FO[ch & 0xff];
     int c, r;
+    (void)bmp;
     for (c = 0; c < w; c++) {
         int bits = DN_FB[off + c];
         for (r = 0; r < 8; r++) {
             if (bits & (1 << r)) {              /* bit 0 = top of the glyph */
                 int px = x + c * sc;
                 int py = ytop - r * sc;
-                DN_FILLRECT(bmp, px, py, px + sc - 1, py - sc + 1, 1);
+                dg_fill(px, py, px + sc - 1, py - sc + 1, 1);
             }
         }
     }
@@ -758,18 +800,19 @@ static void dg_ring(void *bmp)
 {
     int cx = 60, cy = 35, R = 14, i, n = 16;
     int dep = digiring_on ? digiring_depth * 258 : 0;   /* 0..127 -> Q15 */
+    (void)bmp;
     for (i = 0; i < n; i++) {
         int a = (i * 256 / n) & 0xff;
         int s = sin256[a], c = sin256[(a + 64) & 0xff];
         int x = cx + ((c * R) >> 15), y = cy + ((s * R) >> 15);
-        DN_FILLRECT(bmp, x, y, x, y, 1);
+        dg_px(x, y);
     }
     if (dep > 0) {
         int s = sin256[dg_ang & 0xff], c = sin256[(dg_ang + 64) & 0xff];
         int amp = (dep * 13) >> 15;
         int jx = dg_rand(2 * amp + 1) - amp, jy = dg_rand(2 * amp + 1) - amp;
         int x = cx + ((c * R) >> 15) + jx, y = cy + ((s * R) >> 15) + jy;
-        DN_FILLRECT(bmp, x - 1, y - 1, x + 1, y + 1, 1);
+        dg_fill(x - 1, y - 1, x + 1, y + 1, 1);
         dg_ang = (dg_ang + (digiring_freq / 8 + 1)) & 0xff;
     }
 }
@@ -782,13 +825,14 @@ static void dg_vbar(void *bmp, int x0, int x1, int num, int den)
     f = num * h / den;
     if (f < 0) f = 0;
     if (f > h) f = h;
-    DN_FILLRECT(bmp, x0, y0, x1, y0 + h, 0);
-    DN_FILLRECT(bmp, x0, y0, x1, y0 + f, 1);
+    (void)bmp;
+    dg_fill(x0, y0, x1, y0 + h, 0);
+    dg_fill(x0, y0, x1, y0 + f, 1);
 }
 
 static void dg_fx_page(void *bmp)
 {
-    DN_FILLRECT(bmp, 0, 0, 127, DG_TOP - 1, 0);
+    dg_fill(0, 0, 127, DG_TOP - 1, 0);
     dg_arrows(bmp);
     dg_ring(bmp);
     dg_vbar(bmp, 104, 106, digiring_on ? digiring_depth : 0, 127);
@@ -803,8 +847,9 @@ static void dg_fx_page(void *bmp)
 static void dg_spiral(void *bmp, int amount)
 {
     int cx = 20, cy = 30, i, n = 30, turns, rmax;
+    (void)bmp;
     if (amount <= 0) {                  /* straight when not folding */
-        DN_FILLRECT(bmp, cx - 14, cy, cx + 14, cy, 1);
+        dg_fill(cx - 14, cy, cx + 14, cy, 1);
         return;
     }
     turns = 1 + amount * 3 / 128;       /* 1..3 turns */
@@ -815,7 +860,7 @@ static void dg_spiral(void *bmp, int amount)
         int a = t & 0xff;
         int s = sin256[a], c = sin256[(a + 64) & 0xff];
         int x = cx + ((c * r) >> 15), y = cy + ((s * r) >> 15);
-        DN_FILLRECT(bmp, x, y, x, y, 1);
+        dg_px(x, y);
     }
 }
 
@@ -831,14 +876,14 @@ static void dg_slider(void *bmp, int x, int val, int vmax)
     DN_FRAMERECT(bmp, x - 2, y0 - 1, x + 2, y1 + 1, 1);
     val = clampi(val, 0, vmax);
     pos = y0 + val * (y1 - y0) / vmax;
-    DN_FILLRECT(bmp, x - 1, y0, x + 1, pos, 1);
+    dg_fill(x - 1, y0, x + 1, pos, 1);
 }
 
 static void dg_fold_page(void *bmp)
 {
     int band = digifold_mode / 32;
     const char *m;
-    DN_FILLRECT(bmp, 0, 0, 127, DG_TOP - 1, 0);
+    dg_fill(0, 0, 127, DG_TOP - 1, 0);
     dg_arrows(bmp);
     dg_spiral(bmp, digifold_on ? digifold_amount : 0);   /* left */
     if (band > 3) band = 3;
@@ -876,11 +921,11 @@ static int dg_eq_y(int x)
 static void dg_eq_page(void *bmp)
 {
     int x;
-    DN_FILLRECT(bmp, 0, 0, 127, DG_TOP - 1, 0);
+    dg_fill(0, 0, 127, DG_TOP - 1, 0);
     dg_arrows(bmp);
-    DN_FILLRECT(bmp, 8, 30, 120, 30, 1);    /* 0 dB reference, one span */
+    dg_fill(8, 30, 120, 30, 1);             /* 0 dB reference, one span */
     for (x = 8; x <= 120; x += 2)
-        DN_FILLRECT(bmp, x, dg_eq_y(x), x, dg_eq_y(x), 1);
+        dg_px(x, dg_eq_y(x));
     DN_TEXTF(bmp, DN_FONT5, 4, 6, -1, "LO %d", digieq_lo);
     DN_TEXTF(bmp, DN_FONT5, 96, 6, -1, "HI %d", digieq_hi);
     dg_title(bmp, "TILT");
@@ -904,6 +949,7 @@ static void dg_crush_gfx(void *bmp)
     int mode = digicrush_mode * 3 / 128;
     int amt = digicrush_on ? digicrush_amount : 0;
     int cy = 26, x;
+    (void)bmp;
     if (mode > 2) mode = 2;
     dg_cr_ph += 1 + (amt >> 4);
     for (x = 4; x <= 40; x += 2) {
@@ -923,16 +969,16 @@ static void dg_crush_gfx(void *bmp)
             if (v < -lim) v = -lim;
         }
         y = cy + v;
-        DN_FILLRECT(bmp, x, y, x, y, 1);
+        dg_px(x, y);
         if (mode == 0 && digicrush_tune > 0 && dg_rand(48) < digicrush_tune / 4)
-            DN_FILLRECT(bmp, x, cy - 10, x, cy + 10, 1);  /* dither specks */
+            dg_fill(x, cy - 10, x, cy + 10, 1);          /* dither specks */
     }
 }
 
 static void dg_crush_page(void *bmp)
 {
     const char *m = dg_crushname(digicrush_mode);
-    DN_FILLRECT(bmp, 0, 0, 127, DG_TOP - 1, 0);
+    dg_fill(0, 0, 127, DG_TOP - 1, 0);
     dg_arrows(bmp);
     dg_crush_gfx(bmp);
     dg_text(bmp, 44 + (82 - dg_strw(m, 2)) / 2, 36, m, 2);
@@ -970,14 +1016,15 @@ static void dg_pitch_gfx(void *bmp)
     int amp = (dep * 14) / 127;                     /* 0 -> straight */
     int k = 1 + (spd * 5) / 127;                    /* nodes 1..6 */
     int y;
+    (void)bmp;
     dg_pi_ph += 2 + (spd >> 3);
     for (y = 2; y <= 51; y += 2) {
         int idx = ((y * k * 256) / 52 + dg_pi_ph) & 0xff;
         int s = (sin256[idx] * amp) >> 15;
         int x1 = c1 + s;
         int x2 = c2 - s;                            /* opposite -> cross */
-        DN_FILLRECT(bmp, x1, y, x1, y, 1);
-        DN_FILLRECT(bmp, x2, y, x2, y, 1);
+        dg_px(x1, y);
+        dg_px(x2, y);
     }
 }
 
@@ -990,20 +1037,21 @@ static void dg_stereo_gfx(void *bmp)
     int mode = digiwave_smode * 3 / 128;
     int dep = digiwave_sdepth, spd = digiwave_speed;
     int cy = 26, x;
+    (void)bmp;
     if (mode > 2) mode = 2;
     dg_st_ph += 2 + (spd >> 3);
     if (mode == 2) {                                    /* WIDE */
         int spread = (dep * 10) / 127;                  /* 0 -> one line */
         for (x = 4; x <= 40; x += 2) {
-            DN_FILLRECT(bmp, x, cy - spread, x, cy - spread, 1);
-            DN_FILLRECT(bmp, x, cy + spread, x, cy + spread, 1);
+            dg_px(x, cy - spread);
+            dg_px(x, cy + spread);
         }
     } else if (mode == 1) {                             /* PAN */
         int amp = (dep * 10) / 127;
         int s = (sin256[dg_st_ph & 0xff] * amp) >> 15;
         for (x = 4; x <= 40; x += 2) {
-            DN_FILLRECT(bmp, x, cy + s, x, cy + s, 1);
-            DN_FILLRECT(bmp, x, cy - s, x, cy - s, 1);
+            dg_px(x, cy + s);
+            dg_px(x, cy - s);
         }
     } else {                                            /* FLAN */
         int amp = (dep * 10) / 127;
@@ -1011,14 +1059,14 @@ static void dg_stereo_gfx(void *bmp)
         for (x = 4; x <= 40; x += 2) {
             int idx = ((x * 256 / wl) + dg_st_ph) & 0xff;
             int y = cy - ((sin256[idx] * amp) >> 15);
-            DN_FILLRECT(bmp, x, y, x, y, 1);
+            dg_px(x, y);
         }
     }
 }
 
 static void dg_wave_bars(void *bmp, const char *m, const char *title, int which)
 {
-    DN_FILLRECT(bmp, 0, 0, 127, DG_TOP - 1, 0);
+    dg_fill(0, 0, 127, DG_TOP - 1, 0);
     dg_arrows(bmp);
     if (which == 0)
         dg_pitch_gfx(bmp);
@@ -1048,7 +1096,7 @@ static int *const dg_pfval[8] = {
 static void dg_perf_page(void *bmp)
 {
     int i;
-    DN_FILLRECT(bmp, 0, 0, 127, DG_TOP - 1, 0);
+    dg_fill(0, 0, 127, DG_TOP - 1, 0);
     DN_TEXTF(bmp, DN_FONT5, (128 - dg_strw("PERFORM", 1)) / 2, 45, -1, "PERFORM");
     for (i = 0; i < 8; i++) {
         int x = (i / 4) ? 66 : 4;
@@ -1094,7 +1142,7 @@ static void dg_wash_page(void *bmp)
     int x;
     if (wl < 6)
         wl = 6;
-    DN_FILLRECT(bmp, 0, 0, 127, DG_TOP - 1, 0);
+    dg_fill(0, 0, 127, DG_TOP - 1, 0);
     dg_wa_ph += 1 + (amt >> 5);
     for (x = 0; x <= 112; x += 4) {
         int idx = ((x * 256) / wl + dg_wa_ph) & 0xff;
@@ -1105,7 +1153,7 @@ static void dg_wash_page(void *bmp)
         y = top + ((s * amp) >> 15);
         if (y < 0) y = 0;
         if (y > DG_TOP - 1) y = DG_TOP - 1;
-        DN_FILLRECT(bmp, x, 0, x, y, 1);          /* fill up to the surface */
+        dg_fill(x, 0, x, y, 1);                   /* fill up to the surface */
     }
     dg_macro_frame(bmp, "WASH", digiwash_on, digiwash_amount);
 }
@@ -1118,19 +1166,19 @@ static void dg_radio_page(void *bmp)
     int cx = 54, cy = 26;
     int R = 25 - amt * 12 / 127;        /* outer ring fills the height */
     int i, n = 24;
-    DN_FILLRECT(bmp, 0, 0, 127, DG_TOP - 1, 0);
+    dg_fill(0, 0, 127, DG_TOP - 1, 0);
     dg_ra_ph += 2 + (amt >> 4);
     for (i = 0; i < n; i++) {           /* outer ring + inner cone */
         int a = (i * 256 / n + dg_ra_ph) & 0xff;
         int s = sin256[a], c = sin256[(a + 64) & 0xff];
         int rr = R + ((sin256[a] * (amt >> 3)) >> 15);
         int x = cx + ((c * rr) >> 15), y = cy + ((s * rr) >> 15);
-        DN_FILLRECT(bmp, x, y, x, y, 1);
+        dg_px(x, y);
         x = cx + ((c * (rr >> 1)) >> 15);
         y = cy + ((s * (rr >> 1)) >> 15);
-        DN_FILLRECT(bmp, x, y, x, y, 1);
+        dg_px(x, y);
     }
-    DN_FILLRECT(bmp, cx, cy, cx, cy, 1);
+    dg_px(cx, cy);
     dg_macro_frame(bmp, "RADIO", dgmac2_on, dgmac2_amount);
 }
 
@@ -1142,7 +1190,7 @@ static void dg_destroy_page(void *bmp)
     int step = 1 + amt * 10 / 127;
     int amp = 6 + amt * 14 / 127;
     int x;
-    DN_FILLRECT(bmp, 0, 0, 127, DG_TOP - 1, 0);
+    dg_fill(0, 0, 127, DG_TOP - 1, 0);
     dg_de_ph += 1 + (amt >> 5);
     for (x = 0; x <= 112; x += 3) {
         int idx = ((x * 256) / 24 + dg_de_ph) & 0xff;
@@ -1151,7 +1199,7 @@ static void dg_destroy_page(void *bmp)
             y = (y / step) * step;
         if (y < 0) y = 0;
         if (y > DG_TOP - 1) y = DG_TOP - 1;
-        DN_FILLRECT(bmp, x, y, x, y, 1);
+        dg_px(x, y);
     }
     dg_macro_frame(bmp, "DESTROY", dgmac3_on, dgmac3_amount);
 }
@@ -1163,13 +1211,13 @@ static void dg_space_page(void *bmp)
     int amt = dgmac4_on ? dgmac4_amount : 0;
     int spread = 2 + amt * 16 / 127;
     int x;
-    DN_FILLRECT(bmp, 0, 0, 127, DG_TOP - 1, 0);
+    dg_fill(0, 0, 127, DG_TOP - 1, 0);
     dg_sp_ph += 1 + (amt >> 5);
     for (x = 0; x <= 112; x += 4) {
         int idx = ((x * 256) / 32 + dg_sp_ph) & 0xff;
         int s = (sin256[idx] * 4) >> 15;
-        DN_FILLRECT(bmp, x, 26 + spread + s, x, 26 + spread + s, 1);
-        DN_FILLRECT(bmp, x, 26 - spread + s, x, 26 - spread + s, 1);
+        dg_px(x, 26 + spread + s);
+        dg_px(x, 26 - spread + s);
     }
     dg_macro_frame(bmp, "SPACE", dgmac4_on, dgmac4_amount);
 }
@@ -1189,6 +1237,9 @@ void digictl_mdraw(void *view, void *bmp)
         dc_rate = 8;                          /* macro off: static */
     dc_ctr = 0;
     dc_vis = dc_rate + 2;
+    dg_fb = (unsigned char *)DN_FBP;      /* direct-draw target (fb_front) */
+    if (!dg_fb)
+        return;
     if (k == DN_FXKIND)
         dg_fx_page(bmp);
     else if (k == DN_FEKIND)

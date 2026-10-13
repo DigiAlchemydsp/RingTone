@@ -268,3 +268,25 @@ Pending:
    `WV_N`** (2048 → 1024, ~21 ms is plenty for WOB/FLAN/SHFT). Measure with a
    bounded `gui.snap` + `emu.cftiming` pass. The flush/prime in §6 (flanger
    residue) and this can be done together.
+
+## 9. perf-opt branch ledger (experimental, `digitone_corea_perf`)
+
+One row per landed item, in `perf:` commit order. Baseline is `tonefx 3.5d`
+(`.run 26863`, `.bss 25562`, 11 sites, **917** relocs, `imports nothing`). The
+win must be **measured**, not assumed; nothing here is released — the release
+repo (`Tone+FX`) is cut from `main` only.
+
+| # | item | method | `.run` | `.bss` | relocs | behaviour | status |
+|---|---|---|---|---|---|---|---|
+| 1 | Direct framebuffer UI drawing | `dg_px`/`dg_fill` write the 1 bpp panel bytes at `fb_front` (`0x40241a44`) directly, in the stock coordinate frame (display row `63-y`); all page graphics (glyphs, dots, spans, clears) stop calling `DN_FILLRECT` | 26863 → **26707** (−156) | 25562 → 25566 (+4) | 917 → 908 | RING/FOLD/TILT screenshots **pixel-identical** | **landed** |
+
+**Item 1 detail.** Before: `digictl.c` had **36** `DN_FILLRECT` call *sites*; the
+per-pixel glyph path (`dg_glyph`, used by every 2x mode name and the `<`/`>`
+arrows) and the dot/span loops meant **dozens of firmware calls per frame** (each
+a 6-argument call); every lit glyph pixel was also a 2x-scaled fill (4 writes).
+After: **0** `DN_FILLRECT` sites, all page graphics are byte writes; only the
+single slider `DN_FRAMERECT` (kept for exact corner parity) and the `DN_TEXTF`
+strings remain. The scaled glyph names cost 21–34 calls each (MUD 22, CLEAN 29,
+TRSH 32, SHFT 34); the dot graphics another ~16–57 (PITCH 52, macros ~28–56).
+Verified by `tests/digiemu_fx_screenshots.py` against `dn1-35p1-f001f93a`:
+RING/FOLD/TILT byte-identical to the `3.5d` baseline PNGs.

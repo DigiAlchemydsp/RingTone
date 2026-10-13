@@ -8,23 +8,25 @@ updated: `docs/OPTIMIZATION.md`.
 
 ## Summary
 
-| # | item | impact | effort | risk | audio |
-|---|---|---|---|---|---|
-| 1 | Direct framebuffer UI drawing | **high** | M | low | none |
-| 2 | Fuse the master passes | **very high** | L | med | none |
-| 3 | Partial screen clear | med | S | low | none |
-| 4 | Meter gated on visibility | med | S | low | none |
-| 5 | Ceiling gated on "hot" | low–med | S | low | none |
-| 6 | Cache `dn_out_off()` | low | S | low | none |
-| 7 | EMAC for the multiplies | **high** | L | med | none |
-| 8 | Ring LFO → block-rate | med | S | low | none |
-| 9 | SHFT trim (2nd grain) | med | M | med | tiny |
-| 10 | Cheap `dn_q15` blend option | med | S | low | lo-fi modes only |
-| 11 | Hoist per-sample branches | low | S | low | none |
-| 12 | Delay line: downsample / 12-bit / shorter | **high** | M | med | yes (trade) |
-| 13 | Hot tables to `.fast` SRAM | high | L | high | none |
-| 14 | Store-sync gating | low | S | low | none |
-| 15 | Compiler flags / unroll / alignment | med | S | low | none |
+| # | item | impact | effort | risk | audio | status |
+|---|---|---|---|---|---|---|
+| 1 | Direct framebuffer UI drawing | **high** | M | low | none | **landed** |
+| 2 | Fuse the master passes | **very high** | L | med | none | pending |
+| 3 | Partial screen clear | med | S | low | none | pending |
+| 4 | Meter gated on visibility | med | S | low | none | pending |
+| 5 | Ceiling gated on "hot" | low–med | S | low | none | pending |
+| 6 | Cache `dn_out_off()` | low | S | low | none | pending |
+| 7 | EMAC for the multiplies | **high** | L | med | none | pending |
+| 8 | Ring LFO → block-rate | med | S | low | none | pending |
+| 9 | SHFT trim (2nd grain) | med | M | med | tiny | pending |
+| 10 | Cheap `dn_q15` blend option | med | S | low | lo-fi modes only | pending |
+| 11 | Hoist per-sample branches | low | S | low | none | pending |
+| 12 | Delay line: downsample / 12-bit / shorter | **high** | M | med | yes (trade) | pending |
+| 13 | Hot tables to `.fast` SRAM | high | L | high | none | pending |
+| 14 | Store-sync gating | low | S | low | none | pending |
+| 15 | Compiler flags / unroll / alignment | med | S | low | none | pending |
+
+Landed-item numbers live in `docs/OPTIMIZATION.md` §9 (perf-opt ledger).
 
 `S/M/L` = small/medium/large. Start with **1, 3, 4, 8, 10** (cheap, safe); then
 **2** and **7** (structural); **12** alongside the flanger work.
@@ -45,6 +47,15 @@ text (or use the same fb for glyphs). This removes the call overhead entirely.
 
 **Impact:** the biggest UI win; no visual change. **Verify:** screenshot each
 page (digiemu `panel.Capture`) before/after; count calls.
+
+**Status: landed** on `perf-opt`. New helpers `dg_px`/`dg_fill` write the panel
+bytes at `fb_front` (the same buffer the stock draw uses) in the stock
+coordinate frame; `dg_glyph`, the dot/span/clear routines and every page graphic
+were converted. `DN_TEXTF` was kept for the strings and the single slider frame
+kept `DN_FRAMERECT` (exact corner parity). 36 `DN_FILLRECT` sites → 0; FOLD /
+PITCH / macro pages went from dozens of calls per frame to none. `.run`
+26863 → 26707, `.bss` 25562 → 25566, relocs 917 → 908, `imports nothing`;
+RING/FOLD/TILT screenshots byte-identical (digiemu `dn1-35p1-f001f93a`).
 
 ## 2. Fuse the master passes
 
