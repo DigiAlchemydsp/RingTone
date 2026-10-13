@@ -276,7 +276,10 @@ void digiwave_render_out(void)
                 m += mstep;
                 p += 2;
             }
-            wv_fla_mix = mix;
+            wv_fla_mix = m;             /* store the RAMped mix, not the target:
+                                         * storing `mix` restarted the ramp at
+                                         * full mix every block, so FLAN never
+                                         * bypassed and buzzed when switched off */
         } else if (mode == WV_SHF) {
             const int *bl = wv_buf[0], *br = wv_buf[1];
             unsigned r0, r1, inc2;

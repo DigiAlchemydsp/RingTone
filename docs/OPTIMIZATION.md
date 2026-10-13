@@ -285,7 +285,7 @@ repo (`Tone+FX`) is cut from `main` only.
 | 1 | Direct framebuffer UI drawing | `dg_px`/`dg_fill` write the 1 bpp panel bytes at `fb_front` (`0x40241a44`) directly, in the stock coordinate frame (display row `63-y`); all page graphics (glyphs, dots, spans, clears) stop calling `DN_FILLRECT` | 26863 → **26707** (−156) | 25562 → 25566 (+4) | 917 → 908 | RING/FOLD/TILT screenshots **pixel-identical** | **landed** |
 | 4 | Meter gated on visibility | `digimeter_render_out` returns unless `digictl_meter_active()` — a weak hook (undefined in a standalone meter build) that is true only while the FOLD page, the sole reader of `digimeter_l/r`, is up | 26707 → **26791** (+84) | 25566 → 25570 (+4) | 908 → 915 | FOLD/RING/TILT screenshots identical; render worst −408 cyc | **landed** |
 | 11 | Hoist per-sample block-constant branches | Split `crush` BITS into dither / no-dither loops and `fold` into drive / no-drive loops (GCC does not loop-unswitch at `-O2`); when a section is bypassed its loop is unchanged | 26791 → **26983** (+192) | 25570 | 915 | fold+crush output bit-identical by construction; pages unchanged | **landed** |
-| 5 | Ceiling gated on "hot" | `digictl_limit_out` returns unless `dn_fx_hot()` — a conservative any-section-could-overshoot check; the clean path then matches the stock OS, which has no ceiling | 26983 → **27155** (+172) | 25570 | 915 → 930 | limiter still runs when any FX is hot; pages unchanged | **landed** |
+| 5 | Ceiling gated on "hot" | `digictl_limit_out` returned unless `dn_fx_hot()` — **REVERTED (audible)**: with every section off the raw mix can still exceed the knee, and skipping the limiter then hard-clips, so the limiter must run every block | 26983 → 27155 (+172) then **reverted** | 25570 | +13 then reverted | clipping heard on hardware when FX off | **reverted** |
 | 14 | Store-sync gating | `dn_store_sync` / `dn_store2_sync` compare the block only every 8th UI tick (dirty writes and pattern switches still immediate); the adopt guard still runs, ≤ 8 ticks later | 27155 → **27199** (+44) | 25570 → 25578 (+8) | 930 → 934 | pattern-store test PASS | **landed** |
 
 **Item 1 detail.** Before: `digictl.c` had **36** `DN_FILLRECT` call *sites*; the
@@ -349,6 +349,14 @@ FX forced neutral:
 still runs: render worst 99557 → 99572, margin 0.4027 → 0.4026 (the ~15-cycle
 hot-check, negligible). Pages unchanged.
 
+**Item 5 detail — REVERTED.** The gate was **not** inaudible: with every section
+off the raw mix can still exceed the `0x600000` knee, and skipping the limiter
+lets it reach 24-bit full scale and hard-clip — heard on hardware as distortion
+when the FX are switched off, curing when a section is switched back on (its
+flag re-arms the limiter). The "no audible change" rule wins over the ~950-cycle
+clean-path saving, so `digictl_limit_out` runs every block again. The plan's
+"audio: none" rating was wrong for this item.
+
 **Item 14 detail.** Each UI tick compared 84 bytes (store1 64 + store2 20) against
 its shadow. The compare now runs every 8th tick when nothing is pending and the
 pattern pointer has not moved; a dirty page edit and a pattern switch are still
@@ -397,3 +405,20 @@ DESTROY/SPACE by their macro flag. PERFORM has no on/off and shows none. Drawn
 with the direct-framebuffer helpers (#1) after the page. Verified by capturing
 all 11 pages: the off-by-default CRUSH/PITCH/STEREO/WASH/RADIO/DESTROY/SPACE
 show the box; RING/FOLD/TILT do not.
+
+### 10.3 FLAN never truly bypassed — fixed (the "distortion after switching FLAN off")
+
+The real cause of the flanger-related distortion (separate from the shared delay
+line, §10.1) was a bookkeeping bug in the FLAN ramp: at the end of the FLAN loop
+the engine did `wv_fla_mix = mix;`, storing the **target** (`digiwave_mix*258`)
+instead of the ramped local `m`. Every other mode stores the ramped local
+(`wv_wob_wet = wet`, `wv_shf_wet = w`, `wv_pan_dep = dep`, `wv_wide_cur = d`).
+Because `wv_fla_mix` was reset to full mix every block, switching FLAN off made
+`m` restart at full mix and sweep to 0 **within every block** — a ~1.5 kHz
+flanger buzz that never reached the `m_t == 0 && m == 0` true-bypass return. It
+stopped only when the active WAVE group was changed (editing the PITCH page),
+which is why toggling PITCH "fixed" it.
+
+Fix: `wv_fla_mix = m;`. Verified with the symbol map: FLAN on →
+`wv_fla_mix` 25792 (target 25800); FLAN off → **0** (was stuck at the target
+before). With this and §10.1, switching FLAN off now bypasses cleanly.

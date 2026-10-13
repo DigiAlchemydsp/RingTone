@@ -14,7 +14,7 @@ updated: `docs/OPTIMIZATION.md`.
 | 2 | Fuse the master passes | **very high** | L | med | none | parked |
 | 3 | Partial screen clear | med | S | low | none | obviated |
 | 4 | Meter gated on visibility | med | S | low | none | **landed** |
-| 5 | Ceiling gated on "hot" | low–med | S | low | none | **landed** |
+| 5 | Ceiling gated on "hot" | low–med | S | low | none | **reverted** |
 | 6 | Cache `dn_out_off()` | low | S | low | none | **rejected** |
 | 7 | EMAC for the multiplies | **high** | L | med | none | parked |
 | 8 | Ring LFO → block-rate | med | S | low | none | pending |
@@ -114,12 +114,13 @@ unchanged (screenshot identical).
 setting" flag (flanger feedback > 0, SHFT active, fold/crush drive > 0) and skip
 the limiter when nothing can overshoot — or fold it into #2. **Impact:** small.
 
-**Status: landed.** `dn_fx_hot()` (conservative: ring depth, EQ non-flat,
-fold/crush amount, any WAVE mode, any macro) gates the limiter. All clean:
-cftiming render worst 96086 → 95140 cyc, p99 96086 → 95140, margin 42.35% →
-42.92%. When hot the limiter runs as before (default FX: margin 0.4027 →
-0.4026, the ~15-cycle check). Pages identical. Note this bends the original
-low–med rating — the win is ~950 cyc whenever the mix is clean.
+**Status: REVERTED (audible regression).** It was measured as a clean-path win
+(cftiming worst 96086 → 95140 cyc, margin 42.35% → 42.92%), but it is **not**
+inaudible: with every section off the raw mix can still pass the knee, and
+skipping the limiter lets it hard-clip — heard on hardware as distortion when
+the FX are off, clearing when a section is switched back on. The limiter runs on
+every block again. Lesson: the summary's "audio: none" is not a given — a
+"transparent" limiter is only transparent below its knee.
 
 ## 6. Cache `dn_out_off()`
 
