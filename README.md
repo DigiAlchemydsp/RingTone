@@ -44,30 +44,36 @@ The master chain is **ring → EQ → crush → fold → wave → meter**:
 
 ## Use
 
-The pages live on the master page tree: **FUNC + LFO** cycles the master pages,
-and our eleven pages are appended after the stock ones. **LEFT / RIGHT** (or the
-on-screen `<` `>` arrows) rotate the whole master page list, and **UP** jumps to
-the PERFORM page from any of the other pages. The stock top status bar stays above
-every page. PAGE keeps its stock meaning everywhere; no stock key or encoder is
-taken. A page whose section is switched off draws a small framed **OFF** box.
+The pages live on the master page tree: **FUNC + LFO** opens it. Our pages are
+split into **two trees**, navigated with **LEFT / RIGHT** (or the on-screen `<`
+`>` arrows):
 
-- **RING** — **A** on/off, **E** depth, **F** frequency. A centred ring
-  animation (the marker circles at the carrier rate and jitters with the
-  depth), the depth/frequency bars on the right and the values bottom-left.
-- **FOLD** — **A** on/off, **D** fold type, **E/F/G/H** amount. The spiral (a
-  straight line at 0 that coils as it folds), the big mode title, and the
-  amount as a vertical slider next to the L/R meter.
-- **TILT** — **A** on/off, **E** low shelf, **H** high shelf. A bent low/high
-  response curve.
-- **CRUSH** — **A** on/off, **D** mode (BITS/SR/CRUNCH), **E** amount, **F** tune.
-  A scrolling waveform in the left third that collapses to a line at 0 and is
-  quantised / held / clipped by the mode; the big mode title sits right.
-- **PITCH** — **A** on/off, **D** mode (WOB/SHFT), **E** speed, **F** depth.
-  Two vertical lines run top to bottom; they wobble and intertwine at more nodes
-  as depth/speed rise.
-- **STEREO** — **A** on/off, **D** mode (FLAN/PAN/WIDE), **E** speed, **F** depth,
-  **G** mix, **H** feedback. A horizontal line that ripples (FLAN), splits into
-  two moving apart (PAN) or spreads (WIDE).
+- **FX tree** (play order): **FOLD - CRUSH - RING - STEREO - PITCH - TILT**.
+- **PERFORM + macros**, reached with **UP** (UP again returns to the FX page you
+  left): **PERFORM - WASH - RADIO - DESTROY - SPACE**.
+
+The stock top status bar stays above every page. PAGE keeps its stock meaning;
+no stock key or encoder is taken. A page whose section is off draws a framed
+**OFF** box; a page driven by a macro page draws a **MACRO** box (top-right).
+Each FX page centres its mode name over the page title and shows a depth slider
+(and a rate slider where it applies) in the rightmost third. **H** toggles the
+output meter on every FX page, and **FUNC + an encoder turn snaps that
+parameter to 0 % / 100 %**.
+
+- **RING** — **A** on/off, **E** depth, **F** frequency, **H** meter. A centred
+  ring animation, the values bottom-left.
+- **FOLD** — **A** on/off, **D** fold type, **E** amount, **H** meter. The
+  spiral (collapses to a line at 0), the big mode name over the title.
+- **TILT** — **A** on/off, **E** low shelf, **G** high shelf, **H** meter. A
+  bent low/high response curve.
+- **CRUSH** — **A** on/off, **D** mode (BITS/**REDUX**/CRUNCH), **E** amount,
+  **F** tune, **H** meter. A scrolling waveform that is quantised / held /
+  clipped by the mode.
+- **PITCH** — **A** on/off, **D** mode (WOB/SHFT), **E** speed, **F** depth,
+  **G** mix (dry/wet), **H** meter. Two vertical lines that wobble and intertwine.
+- **STEREO** — **A** on/off, **B** feedback, **D** mode (FLAN/PAN/WIDE),
+  **E** speed, **F** depth, **G** mix, **H** meter. A horizontal line that
+  ripples (FLAN), splits (PAN) or spreads (WIDE).
 - **PERFORM** — a static page (no animation). **A** ring depth, **B** fold
   amount, **C** crush amount, **D** WAVE pitch depth, **E** WAVE stereo depth,
   **F** EQ low, **G** EQ high, **H** WAVE speed. The 16 trigs are momentary
@@ -98,7 +104,7 @@ Eleven master pages (**FUNC + LFO**; **LEFT/RIGHT** rotates; **UP** opens
 PERFORM from any of the other pages). Each FX page has a frameless animated
 graphic in the leftmost third that collapses to a line when the effect is at
 neutral; PERFORM is static and the four macros each show one slider + a graphic.
-Per-pattern settings are stored in `"DGX1"` v10 (28 params) + `"DGX2"` v1 (the
+Per-pattern settings are stored in `"DGX1"` v10 (28 params) + `"DGX2"` v2 (the
 macros).
 
 | RING | FOLD | TILT |
@@ -206,7 +212,7 @@ still be built and combined individually.
 
 ## Status
 
-Current build **`tonefx 3.5p`** (eleven pages: RING / FOLD / TILT / CRUSH /
+Current build **`tonefx 3.5r`** (eleven pages: RING / FOLD / TILT / CRUSH /
 PITCH / STEREO / PERFORM + the WASH / RADIO / DESTROY / SPACE macros). Tested in
 the **digiemu** emulator (boot/settle, `dsp_running=2`; all eleven pages; the
 flanger/pitch lines verified independent; the per-pattern store round-trips); the
