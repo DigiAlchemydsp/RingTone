@@ -482,3 +482,30 @@ view therefore kept consuming LEFT/RIGHT (and UP/trigs), so in the sequencer
 and `digictl_tick` stops invalidating (and forces `dc_vis = 0`) once the view is
 closed. Verified: with the view open RIGHT rotates the pages; with `+0x30 = 1`
 (simulated close) RIGHT no longer touches the index and the tick disarms.
+
+## 11. UI / control rework (3.5r)
+
+A panel and control pass on top of the 3.5p/3.5q work (same files, no OS hooks
+added).
+
+- **Panel layout** (FX pages): the big FX mode name and the page title are both
+  screen-centred (name above title); a framed **depth** slider and, where
+  applicable, a **rate** slider sit in the rightmost third (FOLD-style), and each
+  page shows its values bottom-left. CRUSH's **SR** mode is renamed **REDUX**.
+- **H = the output meter** on every FX page (the old LEVEL/DATA toggle is gone);
+  displaced controls moved - TILT high -> **G**, STEREO flanger feedback -> **B**,
+  FOLD amount on **E**. The meter scans while a page that draws it is up.
+- **Two page trees** (LEFT/RIGHT cycle within the active tree, **UP** switches):
+  - tree 1 (FX, play order): **FOLD - CRUSH - RING - STEREO - PITCH - TILT**;
+  - tree 2: **PERFORM + WASH/RADIO/DESTROY/SPACE**, reached with UP, UP returns
+    to the FX page you left. PERFORM is not in tree 1. Stock pages are left to
+    the stock cycling.
+- **FUNC + encoder turn** snaps the parameter to **100 % / 0 %** in the turn
+  direction (the ENC step is overridden).
+- **WOB / SHFT dry/wet MIX** (new digiwave_pmix, default 127 = today's sound):
+  exposed on the PITCH page encoder **G** with a MIX readout, stored in the
+  DGX2 block (v1 -> **v2**, 7 params).
+
+Verified: tree-1 cycle [FOLD,CRUSH,RING,STEREO,PITCH,TILT], tree-2 cycle
+[PERFORM,WASH,RADIO,DESTROY,SPACE], UP round-trips; FUNC+E up = 127 / down = 0;
+all 11 pages captured. Build .run 28180, .bss 19446, imports nothing.
