@@ -287,6 +287,7 @@ static void dn_store2_sync(void)
 
 static int clampi(int v, int lo, int hi);
 static void dg_slider(void *bmp, int x, int val, int vmax);
+static void dg_slot(void *bmp, int x, const char *s, int v);
 
 /* ---- MIDI CC control ---------------------------------------------------------
  * cc_glue.s hooks the incoming CC router (0x400ED94E) and calls this with the
@@ -723,6 +724,25 @@ static int dc_goto(char *view, int kind)
     return 1;
 }
 
+/* The main LEFT/RIGHT scroll: every stock page, then our FX pages in play
+ * order. The macro tree (PERFORM + macros) is NOT here - it is reached with UP. */
+static int dc_main_list(char *view, int *buf)
+{
+    int *v = *(int **)(view + 124);
+    int n = v ? (int)((*(int **)(view + 128)) - v) : 0;
+    int i, m = 0;
+    for (i = 0; i < n && m < 15; i++) {
+        int kk = v[i];
+        if (kk >= DN_FXKIND && kk <= DN_SPCKIND)   /* our pages: appended below */
+            continue;
+        buf[m++] = kk;
+    }
+    for (i = 0; i < 6 && m < 15; i++)
+        if (dc_find_kind(view, dc_tree1[i]) >= 0)
+            buf[m++] = dc_tree1[i];
+    return m;
+}
+
 static void add_page(char *view)
 {
     int *v = *(int **)(view + 124), *e = *(int **)(view + 128), *nv;
@@ -881,11 +901,11 @@ static void dg_macrobox(void *bmp)
 {
     const char *s = "MACRO";
     int w = dg_strw(s, 1);
-    int x1 = 126, x0 = x1 - (w + 11);
-    int y0 = 51, y1 = 38;
+    int x0 = (128 - (w + 12)) / 2, x1 = x0 + w + 11;   /* same slot as OFF */
+    int y0 = 51, y1 = 37;
     dg_fill(x0, y0, x1, y1, 0);
     dg_frame(x0, y0, x1, y1);
-    dg_text(bmp, x0 + 6, 48, s, 1);
+    dg_text(bmp, (128 - w) / 2, 48, s, 1);
 }
 
 /* ---------------- RING: animation + value bars ---------------- */
@@ -946,10 +966,10 @@ static void dg_fx_page(void *bmp)
     dg_fill(0, 0, 127, DG_TOP - 1, 0);
     dg_arrows(bmp);
     dg_ring(bmp);
-    dg_slider(bmp, 100, digiring_on ? digiring_depth : 0, 127);   /* depth */
-    dg_slider(bmp, 114, digiring_freq, 127);                      /* rate  */
-    dg_meter(bmp);
-    DN_TEXTF(bmp, DN_FONT5, 2, 4, -1, "DEP %d FRQ %d", digiring_depth, digiring_freq);
+    dg_slider(bmp, 96, digiring_on ? digiring_depth : 0, 127);    /* depth */
+    dg_slider(bmp, 118, digiring_freq, 127);                      /* rate  */
+    dg_slot(bmp, 96, "DEP", digiring_depth);
+    dg_slot(bmp, 118, "FRQ", digiring_freq);
     dg_title(bmp, "RING");
 }
 
@@ -984,11 +1004,19 @@ static const char *dg_modename(int m)
 
 static void dg_slider(void *bmp, int x, int val, int vmax)
 {
-    int y0 = 10, y1 = 44, pos;
+    int y0 = 20, y1 = 44, pos;    /* leave room below for the label + value */
     DN_FRAMERECT(bmp, x - 2, y0 - 1, x + 2, y1 + 1, 1);
     val = clampi(val, 0, vmax);
     pos = y0 + val * (y1 - y0) / vmax;
     dg_fill(x - 1, y0, x + 1, pos, 1);
+}
+
+/* a short label above its value, both centred on the slider column x, at the
+ * bottom of the screen */
+static void dg_slot(void *bmp, int x, const char *s, int v)
+{
+    DN_TEXTF(bmp, DN_FONT5, x - dg_strw(s, 1) / 2, 12, -1, "%s", s);
+    DN_TEXTF(bmp, DN_FONT5, x - ((v >= 100) ? 9 : (v >= 10) ? 6 : 3), 4, -1, "%d", v);
 }
 
 static void dg_fold_page(void *bmp)
@@ -1003,7 +1031,7 @@ static void dg_fold_page(void *bmp)
     dg_bigname(bmp, m);                                  /* big, screen-centred */
     dg_slider(bmp, 100, digifold_on ? digifold_amount : 0, 127);
     dg_meter(bmp);
-    DN_TEXTF(bmp, DN_FONT5, 2, 4, -1, "AMT %d", digifold_amount);
+    dg_slot(bmp, 100, "AMT", digifold_amount);
     dg_title(bmp, "FOLD");
 }
 
@@ -1093,11 +1121,11 @@ static void dg_crush_page(void *bmp)
     dg_arrows(bmp);
     dg_crush_gfx(bmp);
     dg_bigname(bmp, m);
-    dg_slider(bmp, 100, digicrush_on ? digicrush_amount : 0, 127);  /* depth */
-    dg_slider(bmp, 114, digicrush_tune, 127);                       /* rate  */
+    dg_slider(bmp, 96, digicrush_on ? digicrush_amount : 0, 127);   /* depth */
+    dg_slider(bmp, 118, digicrush_tune, 127);                       /* rate  */
     dg_meter(bmp);
-    DN_TEXTF(bmp, DN_FONT5, 2, 4, -1, "AMT %d TUN %d",
-             digicrush_amount, digicrush_tune);
+    dg_slot(bmp, 96, "AMT", digicrush_amount);
+    dg_slot(bmp, 118, "TUN", digicrush_tune);
     dg_title(bmp, "CRUSH");
 }
 
@@ -1187,16 +1215,28 @@ static void dg_wave_bars(void *bmp, const char *m, const char *title, int which)
     else
         dg_stereo_gfx(bmp);
     dg_bigname(bmp, m);
-    dg_slider(bmp, 100, which == 0 ? digiwave_pdepth : digiwave_sdepth, 127);
-    dg_slider(bmp, 114, digiwave_speed, 127);
-    dg_meter(bmp);
-    DN_TEXTF(bmp, DN_FONT5, 2, 4, -1, "SPD %d DEP %d",
-             digiwave_speed, which == 0 ? digiwave_pdepth : digiwave_sdepth);
-    if (which == 0)
-        DN_TEXTF(bmp, DN_FONT5, 2, 14, -1, "MIX %d", digiwave_pmix);
-    else
-        DN_TEXTF(bmp, DN_FONT5, 2, 14, -1, "MIX %d FB %d",
-                 digiwave_mix, digiwave_fb);
+    if (which == 0) {                    /* PITCH: SPD, DEP, MIX */
+        dg_slider(bmp, 86, digiwave_speed, 127);
+        dg_slider(bmp, 104, digiwave_pdepth, 127);
+        dg_slider(bmp, 122, digiwave_pmix, 127);
+        dg_slot(bmp, 86, "SPD", digiwave_speed);
+        dg_slot(bmp, 104, "DEP", digiwave_pdepth);
+        dg_slot(bmp, 122, "MIX", digiwave_pmix);
+    } else if ((digiwave_smode * 3 / 128) == 0) {   /* FLAN: SPD, DEP, MIX, FB */
+        dg_slider(bmp, 88, digiwave_speed, 127);
+        dg_slider(bmp, 100, digiwave_sdepth, 127);
+        dg_slider(bmp, 112, digiwave_mix, 127);
+        dg_slider(bmp, 124, digiwave_fb, 127);
+        dg_slot(bmp, 88, "SPD", digiwave_speed);
+        dg_slot(bmp, 100, "DEP", digiwave_sdepth);
+        dg_slot(bmp, 112, "MIX", digiwave_mix);
+        dg_slot(bmp, 124, "FB", digiwave_fb);
+    } else {                             /* PAN / WIDE: SPD, DEP */
+        dg_slider(bmp, 98, digiwave_speed, 127);
+        dg_slider(bmp, 118, digiwave_sdepth, 127);
+        dg_slot(bmp, 98, "SPD", digiwave_speed);
+        dg_slot(bmp, 118, "DEP", digiwave_sdepth);
+    }
     dg_title(bmp, title);
 }
 
@@ -1386,8 +1426,7 @@ void digictl_mdraw(void *view, void *bmp)
     DN_STOCK_DRAW(view, bmp);
     dc_view = (char *)view;
     k = cur_kind(dc_view);
-    dc_meter_vis = (k == DN_FXKIND || k == DN_FEKIND || k == DN_CRKIND ||
-                    k == DN_WVKIND || k == DN_WSKIND);  /* pages that draw the meter */
+    dc_meter_vis = (k == DN_FEKIND || k == DN_CRKIND);   /* CRUSH + FOLD draw the meter */
     dc_rate = 3;
     if (k == DN_PFKIND)
         dc_rate = 8;                          /* static page */
@@ -1485,32 +1524,32 @@ int digictl_enc(void *brain, void *ev)
     if (dc_func)
         d = (d > 0) ? 127 : -127;   /* FUNC + turn: snap the param to 100% / 0% */
 
-    if (k == DN_FEKIND) {                /* FOLD: A on, D mode, E amount, H meter */
+    if (k == DN_FEKIND) {                /* FOLD: A on, D mode, E/F/G/H amount, LEVEL meter */
         switch (id) {
         case 1: digifold_on = (d > 0); break;
         case 4: digifold_mode = clampi(digifold_mode + d, 0, 127); break;
-        case 5: digifold_amount = clampi(digifold_amount + d, 0, 127); break;
-        case 8: digimeter_on = (d > 0); break;
+        case 5: case 6: case 7: case 8:
+            digifold_amount = clampi(digifold_amount + d, 0, 127); break;
+        case 9: digimeter_on = (d > 0); break;
         default: break;
         }
-    } else if (k == DN_EQKIND) {         /* TILT: A on, E lo, G hi, H meter */
+    } else if (k == DN_EQKIND) {         /* TILT: A on, E lo, H hi */
         switch (id) {
         case 1: digieq_on = (d > 0); break;
         case 5: digieq_lo = clampi(digieq_lo + d, 0, 127); break;
-        case 7: digieq_hi = clampi(digieq_hi + d, 0, 127); break;
-        case 8: digimeter_on = (d > 0); break;
+        case 8: digieq_hi = clampi(digieq_hi + d, 0, 127); break;
         default: break;
         }
-    } else if (k == DN_CRKIND) {         /* CRUSH: A on, D mode, E amount, F tune, H meter */
+    } else if (k == DN_CRKIND) {         /* CRUSH: A on, D mode, E amount, F tune, LEVEL meter */
         switch (id) {
         case 1: digicrush_on = (d > 0); break;
         case 4: digicrush_mode = clampi(digicrush_mode + d, 0, 127); break;
         case 5: digicrush_amount = clampi(digicrush_amount + d, 0, 127); break;
         case 6: digicrush_tune = clampi(digicrush_tune + d, 0, 127); break;
-        case 8: digimeter_on = (d > 0); break;
+        case 9: digimeter_on = (d > 0); break;
         default: break;
         }
-    } else if (k == DN_WVKIND) {         /* PITCH: A on, D mode, E speed, F depth, H meter */
+    } else if (k == DN_WVKIND) {         /* PITCH: A on, D mode, E speed, F depth, G mix */
         digiwave_page = 0;               /* editing this page activates it */
         switch (id) {
         case 1: digiwave_on = (d > 0); break;
@@ -1523,15 +1562,13 @@ int digictl_enc(void *brain, void *ev)
         case 5: digiwave_speed = clampi(digiwave_speed + d, 0, 127); break;
         case 6: digiwave_pdepth = clampi(digiwave_pdepth + d, 0, 127); break;
         case 7: digiwave_pmix = clampi(digiwave_pmix + d, 0, 127); break;
-        case 8: digimeter_on = (d > 0); break;
         default: break;
         }
-    } else if (k == DN_WSKIND) {         /* STEREO: A on, B fb, D mode, E speed, F depth,
-                                          * G mix, H meter */
+    } else if (k == DN_WSKIND) {         /* STEREO: A on, D mode, E speed, F depth,
+                                          * G mix, H feedback */
         digiwave_page = 1;
         switch (id) {
         case 1: digiwave_son = (d > 0); break;
-        case 2: digiwave_fb = clampi(digiwave_fb + d, 0, 127); break;
         case 4: {
             int b = (digiwave_smode * 3) >> 7;
             if (b > 2) b = 2;
@@ -1541,7 +1578,7 @@ int digictl_enc(void *brain, void *ev)
         case 5: digiwave_speed = clampi(digiwave_speed + d, 0, 127); break;
         case 6: digiwave_sdepth = clampi(digiwave_sdepth + d, 0, 127); break;
         case 7: digiwave_mix = clampi(digiwave_mix + d, 0, 127); break;
-        case 8: digimeter_on = (d > 0); break;
+        case 8: digiwave_fb = clampi(digiwave_fb + d, 0, 127); break;
         default: break;
         }
     } else if (k >= DN_WASHKIND && k <= DN_SPCKIND) {   /* macros: A on/off, B..H amount */
@@ -1565,12 +1602,11 @@ int digictl_enc(void *brain, void *ev)
         case 8: digiwave_speed = clampi(digiwave_speed + d, 0, 127); break;
         default: break;
         }
-    } else {                             /* RING: A on, E depth, F freq, H meter */
+    } else {                             /* RING: A on, E depth, F freq */
         switch (id) {
         case 1: digiring_on = (d > 0); break;
         case 5: digiring_depth = clampi(digiring_depth + d, 0, 127); break;
         case 6: digiring_freq = clampi(digiring_freq + d, 0, 127); break;
-        case 8: digimeter_on = (d > 0); break;
         default: break;
         }
     }
@@ -1641,19 +1677,21 @@ int digictl_key(void *brain, void *ev)
     if (id != 17 && id != 18)                   /* LEFT / RIGHT */
         return 0;
     {
-        const int *t = 0;
-        int tn = 0, i, cur;
-        for (i = 0; i < 6; i++)
-            if (dc_tree1[i] == k) { t = dc_tree1; tn = 6; break; }
-        if (!t)
-            for (i = 0; i < 5; i++)
-                if (dc_tree2[i] == k) { t = dc_tree2; tn = 5; break; }
-        if (!t)
-            return 0;                           /* a stock page: the stock cycles it */
-        for (i = 0; i < tn; i++)
-            if (t[i] == k)
+        int buf[16], m, i, cur;
+        for (i = 0; i < 5; i++)
+            if (dc_tree2[i] == k) {             /* inside the macro tree */
+                cur = (i + (id == 18 ? 1 : 4)) % 5;
+                return dc_goto(dc_view, dc_tree2[cur]);
+            }
+        m = dc_main_list(dc_view, buf);         /* stock + FX, unlimited */
+        if (m <= 0)
+            return 0;
+        for (i = 0; i < m; i++)
+            if (buf[i] == k)
                 break;
-        cur = (i + (id == 18 ? 1 : tn - 1)) % tn;
-        return dc_goto(dc_view, t[cur]);
+        if (i >= m)
+            i = 0;
+        cur = (i + (id == 18 ? 1 : m - 1)) % m;
+        return dc_goto(dc_view, buf[cur]);
     }
 }
