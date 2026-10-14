@@ -33,7 +33,7 @@ The master chain is **ring → EQ → crush → fold → wave → meter**:
 | `digifold` | **fold** | a triangle wavefolder with CLEAN/MUD/DIST/TRSH fold modes + an internal overdrive |
 | `digiwave` | **wave** | one modulation engine, two pages: **PITCH** (WOB wobble, SHFT shift) and **STEREO** (FLAN flanger, PAN autopan, WIDE width) |
 | `digimeter` | **meter** | L/R peak bars, drawn on the DIGI FOLD page |
-| `digictl` | **pages** | the RING / FOLD / TILT / CRUSH / PITCH / STEREO / PERFORM master pages (FUNC+LFO) that edit the FX; the PERFORM page's trigs are momentary performance pads |
+| `digictl` | **pages** | the eleven master pages (FUNC+LFO) that edit the FX: RING / FOLD / TILT / CRUSH / PITCH / STEREO / PERFORM plus the four macro pages **WASH / RADIO / DESTROY / SPACE**; the PERFORM page's trigs are momentary performance pads |
 
 `digictl` requires the FX mods, so **install them as a set**: build with
 `core-dn1` plus all the suite mods.
@@ -45,11 +45,11 @@ The master chain is **ring → EQ → crush → fold → wave → meter**:
 ## Use
 
 The pages live on the master page tree: **FUNC + LFO** cycles the master pages,
-and our seven pages are appended after the stock ones. **LEFT / RIGHT** (or the
+and our eleven pages are appended after the stock ones. **LEFT / RIGHT** (or the
 on-screen `<` `>` arrows) rotate the whole master page list, and **UP** jumps to
-the PERFORM page from any of the other six. The stock top status bar stays above
+the PERFORM page from any of the other pages. The stock top status bar stays above
 every page. PAGE keeps its stock meaning everywhere; no stock key or encoder is
-taken.
+taken. A page whose section is switched off draws a small framed **OFF** box.
 
 - **RING** — **A** on/off, **E** depth, **F** frequency. A centred ring
   animation (the marker circles at the carrier rate and jitters with the
@@ -74,6 +74,11 @@ taken.
   performance pads, one block per engine (`1 2 9 10` ring, `3 4` fold, `11 12`
   crush, `5 6 13 14` pitch, `7 8 15 16` stereo): hold a pad and the engine turns
   on and its depth ramps up; release restores the saved pattern value.
+- **WASH / RADIO / DESTROY / SPACE** — four one-slider macro pages (one vertical
+  slider on the right, **A** on/off, **B–H** amount, + a per-page graphic). Each
+  drives a bundle of engines while on and restores them when off:
+  **WASH** = WOB + SRR (CRUSH SR) + EQ tilt; **RADIO** = band cut (EQ) + TRSH
+  fold + CRUSH; **DESTROY** = fold + bits + ring; **SPACE** = WAVE stereo width.
 
 The **fold type** is a continuous 0–127 knob spread over four modes — CLEAN
 (36% fold), MUD (full fold), DIST (36% fold + hard-clip overdrive) and TRSH
@@ -89,10 +94,12 @@ The master effects (EQ, ring, fold) are on by default.
 
 ## Pages
 
-Seven master pages (**FUNC + LFO**; **LEFT/RIGHT** rotates; **UP** opens
-PERFORM from any of the other six). Each FX page has a frameless animated
+Eleven master pages (**FUNC + LFO**; **LEFT/RIGHT** rotates; **UP** opens
+PERFORM from any of the other pages). Each FX page has a frameless animated
 graphic in the leftmost third that collapses to a line when the effect is at
-neutral; PERFORM is static.
+neutral; PERFORM is static and the four macros each show one slider + a graphic.
+Per-pattern settings are stored in `"DGX1"` v10 (28 params) + `"DGX2"` v1 (the
+macros).
 
 | RING | FOLD | TILT |
 |---|---|---|
@@ -131,6 +138,29 @@ Turn off the pages you are not using; each true-bypasses. Full ledger in
 full scale (transparent below ~-2.5 dBFS, asymptotic max ~-0.7 dBFS), so a hot
 flanger-feedback / pitch-shift / drive setting cannot hard-clip.
 
+## Optimizations (perf-opt, in 3.5p)
+
+A measured CPU / footprint pass, merged from the `perf-opt` worktree. Full ledger:
+[`docs/OPTIMIZATION.md`](docs/OPTIMIZATION.md) §9; plan + statuses:
+[`docs/PERF-OPT-PLAN.md`](docs/PERF-OPT-PLAN.md). Everything is bit-identical or a
+stated trade; nothing changes what the suite does.
+
+| optimization | effect |
+|---|---|
+| **Direct framebuffer UI drawing** — page graphics write the 1 bpp panel bytes instead of one `DN_FILLRECT` call per pixel/span | 36 call sites → 0; pages pixel-identical; `.run` 26863 → 26707 |
+| **Meter gated on visibility** — the per-block peak scan runs only while the FOLD page (its only reader) is up | render worst 99,965 → 99,557 cyc; margin 40.03 → 40.27 % |
+| **Hoist block-constant branches** in `digicrush` (BITS dither) and `digifold` (drive) | worst 104,579 → 104,158 cyc; output bit-identical |
+| **Store-sync gating** — the per-tick 84-byte compare runs every 8th tick (edits/switches immediate) | −25,867 instructions/s |
+| **Shorter WAVE dry line** — `WV_N` 2048 → 1024, landed with the flanger fix | `.bss` delay lines −6.1 KB |
+
+Measured and **rejected** (reverted): caching `dn_out_off()` (it is already an
+inline uncached read) and `-O3` (more cycles *and* +21 % code). The **#5 ceiling
+gate was landed then reverted** — skipping the limiter with all FX off lets a hot
+mix hard-clip. **Parked:** fusing the master passes (#2, ROI), the EMAC
+multiplies (#7), `.fast` SRAM (#13, blocked); the block-rate ring LFO (#8) is
+unsound as written (audio-rate carrier). Net footprint of this build: `.run
+27475`, **`.bss 19446` (−6.1 KB)**, `imports nothing`.
+
 ## Layout
 
 ```
@@ -168,7 +198,7 @@ $stock = "<your> Digitone_and_Digitone_Keys_OS1.43.syx"
 $core  = "<elekloader>\mods\core-dn1\out\core-2.0a.elemod"
 python -m elekloader.sdk.build "mods\tonefx" --stock $stock
 python -m elekloader.patch --stock $stock --mod $core `
-  --mod mods\tonefx\out\tonefx-3.2b.elemod --out custom.syx --version 3.2b
+  --mod mods\tonefx\out\tonefx-3.5p.elemod --out custom.syx --version 3.5p
 ```
 
 The components (`digimeter`, `digieq`, `digiring`, `digifold`, `digictl`) can
@@ -176,21 +206,27 @@ still be built and combined individually.
 
 ## Status
 
-Current build **`tonefx 3.2b`**. Tested in the **digiemu** emulator (boot/settle,
-`dsp_running=2`; all seven pages; a live-audio check of the PERFORM pads) and
-**stress-tested on two Digitone mk1 units — in parallel and in series — over
-synths, drums, vocals and master tracks (including vinyl)**. Done: pattern-level
-save/reload, stock 0–127 controls, MIDI CC, one merged `tonefx` mod, the
-PERFORM performance page, and encoder steps that match stock (one step per
-encoder detent, with the driver's own acceleration). Remaining: a formal
-headroom measurement, and the tracked follow-ups (see
-[`HANDOFF.md`](HANDOFF.md) and the release README's "Known bugs / future fixes").
+Current build **`tonefx 3.5p`** (eleven pages: RING / FOLD / TILT / CRUSH /
+PITCH / STEREO / PERFORM + the WASH / RADIO / DESTROY / SPACE macros). Tested in
+the **digiemu** emulator (boot/settle, `dsp_running=2`; all eleven pages; the
+flanger/pitch lines verified independent; the per-pattern store round-trips); the
+3.2 line was **stress-tested on two Digitone mk1 units — in parallel and in
+series — over synths, drums, vocals and master tracks (including vinyl)**. Done:
+pattern-level save/reload (`DGX1` v10 + `DGX2`), stock 0–127 controls, MIDI CC,
+one merged `tonefx` mod, the PERFORM page + macros, encoder steps that match
+stock, the measured performance pass, and the 3.5p fixes (flanger/pitch link,
+FLAN bypass, MIDI-track microtiming). Remaining: a formal headroom measurement
+and the tracked follow-ups (see [`HANDOFF.md`](HANDOFF.md) and the release
+README's "Known bugs / future fixes").
 
 ## Parked / future work (branches + docs; NOT in the release)
 
-The current release (`Tone+FX` 3.2b) is the seven-page suite (incl. PERFORM) +
-MIDI CC. These are parked for later:
+The current release (`Tone+FX` 3.5p) is the eleven-page suite (incl. PERFORM +
+the macros) + MIDI CC + the performance pass. These are parked for later:
 
+- **Fuse the six master passes** into one loop (`perf-opt` #2) — real CPU back,
+  but a six-module refactor whose win is margin-comparable to the landed items;
+  plus **EMAC multiplies** (#7) and **`.fast` SRAM** (#13, blocked).
 - **Sequencer p-lock automation for the FX params** — branch `tonefx-plock`,
   `docs/PLOCK-AUTOMATION.md` (on the branch): let the internal sequencer
   record/play the DIGI FX params as parameter locks. Prototype works; needs the
@@ -208,7 +244,7 @@ MIDI CC. These are parked for later:
 ```powershell
 python tests/digiemu_fx_screenshots.py --fw <dn1-...>               # RING / FOLD / TILT screenshots
 python tests/digiemu_nav.py --fw <dn1-...>                          # LEFT/RIGHT page navigation
-python tests/digiemu_pattern_store.py --fw <dn1-...>                # per-pattern settings (v8)
+python tests/digiemu_pattern_store.py --fw <dn1-...>                # per-pattern settings (v10 + DGX2)
 python tests/digiemu_midi_cc.py --fw <dn1-...> --map <syx.map.json> # MIDI CC hook
 python tests/_diag_perf.py --fw <dn1-...>                           # PERFORM page, UP nav, encoder->store
 python tests/_diag_perf_live.py --fw <dn1-...>                      # live SSI: the engine-split pads

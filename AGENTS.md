@@ -1,5 +1,11 @@
 # AGENTS.md — Tone+FX performance-optimization worktree
 
+> **Status: landed.** The `perf-opt` work was merged to `main` (commit `6180749`)
+> and shipped as the Tone+FX **3.5p** release. The measured results are in
+> `docs/OPTIMIZATION.md` §9 (perf ledger) and §10 (the fixes that landed with it);
+> `docs/PERF-OPT-PLAN.md` carries the per-item status. The notes below are the
+> original worktree brief.
+
 This is an **experimental worktree** of the Tone+FX dev source, branch
 `perf-opt`, forked from `main` at `tonefx 3.5d`. Its purpose: reduce **CPU and
 memory footprint** of the suite without changing what it does. Keep it isolated
