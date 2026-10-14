@@ -57,18 +57,18 @@ versions: 3 dropped the per-voice-filter params, 6 added CRUSH/WAVE, 7 added the
 split WAVE page/mode params, 8 split the WAVE depth into an independent
 **pitch** depth and **stereo** depth, 9 added the WASH macro, 10 split the WAVE
 on/off into independent PITCH and STEREO enables (`digiwave_on` /
-`digiwave_son`). An older block fails the magic check and is treated as a fresh
+`digiwave_son`). Block 2 is at **v2** (adds the PITCH dry/wet `digiwave_pmix`). An older block fails the magic check and is treated as a fresh
 pattern, so it starts from the live values. Block 1 is now **full** (64/64
 bytes).
 
 ## The second block (macros)
 
-Block 1 holds the FX + WASH. The extra macros (**RADIO / DESTROY / SPACE**,
-on + amount each) live in a **second block** at `pattern + 0x1410` (MIDI track
-1's unused 64-byte area), magic **`"DGX2"` v1 / 6 params** (8 + 2*6 = 20 bytes).
-It has its own `dn_store2_sync` / guard, called on the same UI tick, so the
-macros save and reload with the pattern exactly like the rest. More macros (or
-params) can go in the other runs (`+0x17E0`, `+0x1BB0`).
+Block 1 holds the FX + WASH. The extra macros (**RADIO / DESTROY / SPACE**, on +
+amount each) and the PITCH dry/wet (`digiwave_pmix`) live in a **second block**
+at `pattern + 0x1410` (MIDI track 1's unused 64-byte area), magic **`"DGX2"`
+v2 / 7 params** (8 + 2*7 = 22 bytes). It has its own `dn_store2_sync` / guard,
+called on the same UI tick, so they save and reload with the pattern exactly like
+the rest. More params can go in the other runs (`+0x17E0`, `+0x1BB0`).
 
 ## The sync and the adopt guard
 

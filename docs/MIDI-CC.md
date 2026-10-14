@@ -62,7 +62,9 @@ lives at `0x4018D104`, 182 entries; the ones we use are listed below). The risky
 **CC 20–31 are not yet checked against the stock CC table** (`0x4018D104`,
 182 entries) — confirm they are free before sequencing WAVE/CRUSH from a DAW.
 
-Not CC-controlled: the parked `digimod_*` LFO bridge.
+Not CC-controlled: the parked `digimod_*` LFO bridge, and the **PITCH dry/wet
+`digiwave_pmix`** (3.5r; a free CC can be added later). `28`/`29` remain the
+flanger mix/feedback (STEREO).
 
 Incoming CCs on **any** MIDI channel drive the (global) master FX; the values
 follow the active pattern and are saved with it.

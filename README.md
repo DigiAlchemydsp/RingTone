@@ -44,36 +44,36 @@ The master chain is **ring → EQ → crush → fold → wave → meter**:
 
 ## Use
 
-The pages live on the master page tree: **FUNC + LFO** opens it. Our pages are
-split into **two trees**, navigated with **LEFT / RIGHT** (or the on-screen `<`
-`>` arrows):
+The pages live on the master page tree: **FUNC + LFO** opens it.
 
-- **FX tree** (play order): **FOLD - CRUSH - RING - STEREO - PITCH - TILT**.
-- **PERFORM + macros**, reached with **UP** (UP again returns to the FX page you
-  left): **PERFORM - WASH - RADIO - DESTROY - SPACE**.
+- **Main scroll** (**LEFT / RIGHT**, unlimited): the stock master pages, then
+  our FX pages in play order **FOLD - CRUSH - RING - STEREO - PITCH - TILT**.
+- **Macro tree** (**UP**): **PERFORM - WASH - RADIO - DESTROY - SPACE**
+  (LEFT/RIGHT cycle within it; **UP** returns to the FX page you left). PERFORM
+  is **not** in the main scroll.
 
 The stock top status bar stays above every page. PAGE keeps its stock meaning;
 no stock key or encoder is taken. A page whose section is off draws a framed
-**OFF** box; a page driven by a macro page draws a **MACRO** box (top-right).
-Each FX page centres its mode name over the page title and shows a depth slider
-(and a rate slider where it applies) in the rightmost third. **H** toggles the
-output meter on every FX page, and **FUNC + an encoder turn snaps that
-parameter to 0 % / 100 %**.
+**OFF** box; a page driven by a macro page draws a **MACRO** box in the same
+slot. Each FX page centres its mode name over the centred page title, with the
+depth/rate sliders and their labelled readouts in the rightmost third.
+**FUNC + an encoder turn snaps that parameter to 0 % / 100 %**.
 
-- **RING** — **A** on/off, **E** depth, **F** frequency, **H** meter. A centred
-  ring animation, the values bottom-left.
-- **FOLD** — **A** on/off, **D** fold type, **E** amount, **H** meter. The
-  spiral (collapses to a line at 0), the big mode name over the title.
-- **TILT** — **A** on/off, **E** low shelf, **G** high shelf, **H** meter. A
-  bent low/high response curve.
+- **RING** — **A** on/off, **E** depth, **F** frequency. A centred ring
+  animation, 2 sliders (DEP, FRQ).
+- **FOLD** — **A** on/off, **D** fold type, **E/F/G/H** amount, **LEVEL**
+  meter. The spiral (collapses to a line at 0), the big mode name over the title.
+- **TILT** — **A** on/off, **E** low shelf, **H** high shelf. A bent low/high
+  response curve.
 - **CRUSH** — **A** on/off, **D** mode (BITS/**REDUX**/CRUNCH), **E** amount,
-  **F** tune, **H** meter. A scrolling waveform that is quantised / held /
-  clipped by the mode.
+  **F** tune, **LEVEL** meter. A scrolling waveform; 2 sliders (AMT, TUN).
 - **PITCH** — **A** on/off, **D** mode (WOB/SHFT), **E** speed, **F** depth,
-  **G** mix (dry/wet), **H** meter. Two vertical lines that wobble and intertwine.
-- **STEREO** — **A** on/off, **B** feedback, **D** mode (FLAN/PAN/WIDE),
-  **E** speed, **F** depth, **G** mix, **H** meter. A horizontal line that
-  ripples (FLAN), splits (PAN) or spreads (WIDE).
+  **G** mix (dry/wet). Two vertical lines that wobble and intertwine; 3 sliders
+  (SPD, DEP, MIX).
+- **STEREO** — **A** on/off, **D** mode (FLAN/PAN/WIDE), **E** speed, **F**
+  depth, **G** mix, **H** feedback. A horizontal line that ripples (FLAN),
+  splits (PAN) or spreads (WIDE). **FLAN shows 4 sliders** (SPD, DEP, MIX, FB);
+  PAN/WIDE show 2.
 - **PERFORM** — a static page (no animation). **A** ring depth, **B** fold
   amount, **C** crush amount, **D** WAVE pitch depth, **E** WAVE stereo depth,
   **F** EQ low, **G** EQ high, **H** WAVE speed. The 16 trigs are momentary

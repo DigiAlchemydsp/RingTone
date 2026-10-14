@@ -5,8 +5,9 @@ optimization methods used (and why), what is repurposed from the stock OS and
 from RingTone, and the RAM / flash / headroom ledger. This is the technical
 companion to `HANDOFF.md`; `DSP.md` is the address/architecture reference.
 
-Current package: `tonefx 3.5p` (`.run 27475`, `.bss 19446`, `imports nothing`).
-The `perf-opt` ledger is §9 and the fixes that landed with it are §10.
+Current package: `tonefx 3.5r` (`.run 28561`, `.bss 19446`, `imports nothing`).
+The `perf-opt` ledger is §9, the fixes that landed with it are §10, and the
+3.5r UI/control rework is §11.
 
 ## 1. Where the code runs
 
