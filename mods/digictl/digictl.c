@@ -74,7 +74,7 @@ extern int digimeter_on, digimeter_l, digimeter_r;
 extern int digicrush_on, digicrush_mode, digicrush_amount, digicrush_tune;
 extern int digiwave_on, digiwave_son, digiwave_pmode, digiwave_smode, digiwave_page;
 extern int digiwave_speed, digiwave_pdepth, digiwave_sdepth;
-extern int digiwave_mix, digiwave_fb;
+extern int digiwave_mix, digiwave_fb, digiwave_pmix;
 
 /* MACRO page state (owned here, stored per pattern). WASH = reverb send +
  * a WAVE wobble: while it is on, it drives the WAVE engine into WOB and turns
@@ -207,15 +207,15 @@ static void dn_store_sync(void)
  * Block 1 (pattern+0x1040) is full (28 params); this is MIDI track 1's unused
  * 64-byte block (pattern+0x1410), same idea, magic "DGX2". */
 #define DN_STORE2_OFF  0x1410u
-#define DN_STORE2_N    6
-#define DN_STORE2_VER  1
+#define DN_STORE2_N    7
+#define DN_STORE2_VER  2
 #define DN_STORE2_MAG(a) ((a)[0] == 0x44 && (a)[1] == 0x47 && \
                           (a)[2] == 0x58 && (a)[3] == 0x32 && \
                           (a)[5] == DN_STORE2_VER)              /* "DGX2" v1 */
 
 static int *const dn_fxparam2[DN_STORE2_N] = {
     &dgmac2_on, &dgmac2_amount, &dgmac3_on, &dgmac3_amount,
-    &dgmac4_on, &dgmac4_amount,
+    &dgmac4_on, &dgmac4_amount, &digiwave_pmix,
 };
 static unsigned char *dn_store2_blk;
 static unsigned char dn_store2_copy[8 + 2 * DN_STORE2_N];
@@ -1192,7 +1192,9 @@ static void dg_wave_bars(void *bmp, const char *m, const char *title, int which)
     dg_meter(bmp);
     DN_TEXTF(bmp, DN_FONT5, 2, 4, -1, "SPD %d DEP %d",
              digiwave_speed, which == 0 ? digiwave_pdepth : digiwave_sdepth);
-    if (which != 0)
+    if (which == 0)
+        DN_TEXTF(bmp, DN_FONT5, 2, 14, -1, "MIX %d", digiwave_pmix);
+    else
         DN_TEXTF(bmp, DN_FONT5, 2, 14, -1, "MIX %d FB %d",
                  digiwave_mix, digiwave_fb);
     dg_title(bmp, title);
@@ -1520,6 +1522,7 @@ int digictl_enc(void *brain, void *ev)
         } break;
         case 5: digiwave_speed = clampi(digiwave_speed + d, 0, 127); break;
         case 6: digiwave_pdepth = clampi(digiwave_pdepth + d, 0, 127); break;
+        case 7: digiwave_pmix = clampi(digiwave_pmix + d, 0, 127); break;
         case 8: digimeter_on = (d > 0); break;
         default: break;
         }

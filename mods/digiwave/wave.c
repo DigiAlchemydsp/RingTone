@@ -29,6 +29,7 @@ int digiwave_pdepth = 64;       /* PITCH page depth (wobble / semitones) */
 int digiwave_sdepth = 64;       /* STEREO page depth (sweep / pan / width) */
 int digiwave_mix = 64;          /* wet mix (FLAN) */
 int digiwave_fb = 0;            /* flanger feedback (capped at 75%) */
+int digiwave_pmix = 127;        /* PITCH group dry/wet (WOB/SHFT); 127 = full wet */
 
 #define WV_WOB 0
 #define WV_SHF 1
@@ -217,7 +218,8 @@ void digiwave_render_out(void)
             int base = 384;                             /* ~8 ms */
             int span = depth * 3;                       /* up to ~8 ms */
             int wet = wv_wob_wet;
-            int wet_t = (on && depth > 0) ? 32767 : 0;  /* neutral = dry */
+            int wet_t = (on && depth > 0) ?
+                        (32767 * digiwave_pmix / 127) : 0;  /* neutral = dry */
             int wstep;
             if (wet_t == 0 && wet == 0) return;         /* true bypass */
             wstep = wv_step(wet, wet_t);
@@ -288,7 +290,7 @@ void digiwave_render_out(void)
             int w_t, wstep;
             wv_shf_dep += (depth - wv_shf_dep) >> 5;    /* glide the ratio */
             ed = wv_shf_dep < 0 ? 0 : wv_shf_dep > 127 ? 127 : wv_shf_dep;
-            w_t = (on && ed != 64) ? 32767 : 0;         /* neutral = dry */
+            w_t = (on && ed != 64) ? (32767 * digiwave_pmix / 127) : 0;  /* neutral = dry */
             if (w_t == 0 && w == 0) { wv_primed = 0; return; }
             wstep = wv_step(w, w_t);
             inc2 = (unsigned)wv_ratio[ed];
