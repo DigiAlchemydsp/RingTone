@@ -423,6 +423,49 @@ Fix: `wv_fla_mix = m;`. Verified with the symbol map: FLAN on →
 `wv_fla_mix` 25792 (target 25800); FLAN off → **0** (was stuck at the target
 before). With this and §10.1, switching FLAN off now bypasses cleanly.
 
+### 10.5 Macro layer: cue when an FX page is macro-driven; macro-off leaves engines on
+
+**Bug (build 3.5q):** the macro pages (`WASH/RADIO/DESTROY/SPACE`) capture the
+engines' settings when the first macro turns on (`mw_capture`) and restore them
+when the **last** turns off (`mw_restore`). `mw_apply` only restored when **no**
+macro was left on, so switching `WASH` off while e.g. `RADIO` was still on left
+`WASH`'s contributions (the WAVE WOB wobble) running — the "OFF toggle does not
+deactivate the FX completely" symptom.
+
+**Fix:** `mw_apply` now rebuilds the layer from the captured base **every block**
+(`mw_restore()` then each active `mw_one()`), so turning any macro off drops
+exactly its engines while the others stay. Verified: WASH on → `digiwave_on=1,
+pmode=WOB, pdepth=100`; WASH off with RADIO on → `digiwave_on=0` (WAVE released);
+all off → the pre-macro base restored.
+
+**Cue:** a page whose FX is being driven by a macro now draws a **`MACRO`** box
+(framed, top-right — the same style as `OFF`) so it is clear the page's encoders
+are locked. `dg_page_locked(k)` maps each FX page to the macro(s) that drive it
+(ring←DESTROY; fold←RADIO|DESTROY; EQ←WASH|RADIO; crush←WASH|RADIO|DESTROY;
+WAVE pitch←WASH; WAVE stereo←SPACE). `OFF` takes precedence only if no macro is
+driving the page.
+
+### 10.6 Control/stock-param conflict audit (3.5q)
+
+Our `ev_key`/`ev_enc` handlers are the only place the suite sees stock input, and
+they are deliberately narrow:
+
+- they run only while the **master view is open and recently drawn**
+  (`master_live`: `dc_vis>0` **and** the view's closed byte `view+0x30 == 0`),
+  so a closed background view cannot keep them armed (the MIDI-track microtiming
+  / encoder-leak fix, §10.4);
+- `ev_enc` consumes an encoder **only on our pages** (`cur_kind` in 0..10);
+  on a stock page it returns 0 and the stock parameter edit proceeds;
+- `ev_key` consumes only our keys: the 16 trigs are pads **only on PERFORM**,
+  `UP` is consumed **only on our pages**, and `LEFT/RIGHT` rotate the master page
+  list while the view is ours. **`PAGE` (19) and every other key are never
+  consumed** — they always reach the stock OS.
+
+So on our pages the stock does not see the encoders/keys we own, and on stock
+pages we do not see them. The remaining stock-side oddity
+(`PAGE` jumping some FX levels) is the separate HANDOFF §8 item, not a control
+conflict.
+
 ### 10.4 Key/encoder handlers stayed armed after the master view closed (HANDOFF §8)
 
 **Bug:** `digictl_key` / `digictl_enc` gate on `master_live()`, which only tested

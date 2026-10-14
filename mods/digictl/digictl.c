@@ -546,6 +546,11 @@ static void mw_apply(void)
     if (any && !mw_was)
         mw_capture();
     if (any) {
+        /* Rebuild the layer from the captured base every block, then apply each
+         * active macro. Without this the engines a macro touched stayed "on"
+         * after it was switched off while another macro was still active (e.g.
+         * switch WASH off with RADIO on and the WOB wobble kept running). */
+        mw_restore();
         if (digiwash_on)
             mw_one(DN_WASHKIND, digiwash_amount);
         if (dgmac2_on)
@@ -837,6 +842,20 @@ static void dg_offbox(void *bmp)
     dg_fill(x0, y0, x1, y1, 0);             /* clear the box area */
     dg_frame(x0, y0, x1, y1);
     dg_text(bmp, (128 - w) / 2, 48, s, 1);
+}
+
+/* The same framed box, top-right, shown when this page's FX is being driven by
+ * one of the macro pages: the macro overwrites the FX params every block, so
+ * the page's encoders are effectively locked. */
+static void dg_macrobox(void *bmp)
+{
+    const char *s = "MACRO";
+    int w = dg_strw(s, 1);
+    int x1 = 126, x0 = x1 - (w + 11);
+    int y0 = 51, y1 = 38;
+    dg_fill(x0, y0, x1, y1, 0);
+    dg_frame(x0, y0, x1, y1);
+    dg_text(bmp, x0 + 6, 48, s, 1);
 }
 
 /* ---------------- RING: animation + value bars ---------------- */
@@ -1275,6 +1294,22 @@ static void dg_space_page(void *bmp)
     dg_macro_frame(bmp, "SPACE", dgmac4_on, dgmac4_amount);
 }
 
+/* Is this page's FX being driven (locked) by one of the macro pages? Matches
+ * what mw_one() touches: WASH -> WAVE pitch + crush + EQ, RADIO -> EQ + fold +
+ * crush, DESTROY -> fold + crush + ring, SPACE -> WAVE stereo. */
+static int dg_page_locked(int k)
+{
+    switch (k) {
+    case DN_FXKIND:   return dgmac3_on;                              /* DESTROY */
+    case DN_FEKIND:   return dgmac2_on || dgmac3_on;                 /* RADIO, DESTROY */
+    case DN_EQKIND:   return digiwash_on || dgmac2_on;               /* WASH, RADIO */
+    case DN_CRKIND:   return digiwash_on || dgmac2_on || dgmac3_on;  /* WASH/RADIO/DESTROY */
+    case DN_WVKIND:   return digiwash_on;                            /* WASH (WOB) */
+    case DN_WSKIND:   return dgmac4_on;                              /* SPACE (WIDE) */
+    default:          return 0;
+    }
+}
+
 /* Is the section the current page edits switched off? PERFORM has no on/off. */
 static int dg_page_off(int k)
 {
@@ -1334,7 +1369,9 @@ void digictl_mdraw(void *view, void *bmp)
         dg_destroy_page(bmp);
     else if (k == DN_SPCKIND)
         dg_space_page(bmp);
-    if (dg_page_off(k))
+    if (dg_page_locked(k))
+        dg_macrobox(bmp);                     /* driven by a macro: locked */
+    else if (dg_page_off(k))
         dg_offbox(bmp);                       /* section off: show OFF */
 }
 
