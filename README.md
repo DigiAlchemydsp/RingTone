@@ -36,7 +36,7 @@ The master chain is **ring → EQ → crush → fold → wave → meter**:
 | `digictl` | **pages** | the eleven master pages (FUNC+LFO) that edit the FX: RING / FOLD / TILT / CRUSH / PITCH / STEREO / PERFORM plus the four macro pages **WASH / RADIO / DESTROY / SPACE**; the PERFORM page's trigs are momentary performance pads |
 
 `digictl` requires the FX mods, so **install them as a set**: build with
-`core-dn1` plus all the suite mods.
+`core-dn1` (4.0) plus all the suite mods.
 
 > Unofficial and unsupported. Not affiliated with, endorsed by or supported by
 > Elektron. Flashing modified firmware is at your own risk. Read
@@ -184,7 +184,7 @@ LICENSE         GPL-2.0
 elekloader builds a custom OS **on your machine** from your own stock
 `Digitone_and_Digitone_Keys_OS1.43.syx` plus these mods; it never distributes
 firmware. Take the `.elemod`s from [`releases/`](releases/) (plus
-`core-dn1-2.0a.elemod`), add them in elekloader's window, and build the `.syx`.
+`core-dn1-4.0.elemod`), add them in elekloader's window, and build the `.syx`.
 See [`releases/README.md`](releases/README.md) for install and recovery.
 
 > **New releases live in [Tone+FX](https://github.com/DigiAlchemydsp/Tone-FX/releases).**
@@ -196,15 +196,26 @@ See [`releases/README.md`](releases/README.md) for install and recovery.
 The suite ships as one merged mod, `mods/tonefx/` (it requires the core, which
 it does not include). Build it, then patch the core + `tonefx`:
 
+**One source builds both OS versions** (1.43 and 1.44); the stock file picks the
+release (`ports.1.44` in `mods/tonefx/mod.json`). `--version` must be exactly 4
+ASCII characters.
+
 ```powershell
 $env:PATH = "C:\SysGCC\m68k-elf\bin;" + $env:PATH
 $env:ELEKLOADER_CROSS = "m68k-elf-"
-$env:PYTHONPATH = "<elekloader checkout>"
-$stock = "<your> Digitone_and_Digitone_Keys_OS1.43.syx"
-$core  = "<elekloader>\mods\core-dn1\out\core-2.0a.elemod"
-python -m elekloader.sdk.build "mods\tonefx" --stock $stock
-python -m elekloader.patch --stock $stock --mod $core `
-  --mod mods\tonefx\out\tonefx-3.5p.elemod --out custom.syx --version 3.5p
+$env:PYTHONPATH = "<elekloader checkout>"      # 0.5.0+
+
+# OS 1.43 -> out/tonefx-3.5r.elemod
+python -m elekloader.sdk.build "mods\tonefx" --stock Digitone_and_Digitone_Keys_OS1.43.syx
+python -m elekloader.patch --stock Digitone_and_Digitone_Keys_OS1.43.syx `
+  --mod core-dn1-4.0.elemod `
+  --mod mods\tonefx\out\tonefx-3.5r.elemod --out ToneFX-1.43.syx --version 3.5r
+
+# OS 1.44 -> out/tonefx-3.5r-os1.44.elemod
+python -m elekloader.sdk.build "mods\tonefx" --stock Digitone_OS1.44.syx
+python -m elekloader.patch --stock Digitone_OS1.44.syx `
+  --mod core-dn1-4.0-os1.44.elemod `
+  --mod mods\tonefx\out\tonefx-3.5r-os1.44.elemod --out ToneFX-1.44.syx --version 3.5r
 ```
 
 The components (`digimeter`, `digieq`, `digiring`, `digifold`, `digictl`) can

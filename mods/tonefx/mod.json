@@ -20,6 +20,11 @@
   "splash.s",
   "render.c"
  ],
+ "defsym": {
+  "CC_RET": "0x400ED954",
+  "SPLASH_DIFF": "0x400f8efa",
+  "SPLASH_FLUSH": "0x400f8e7c"
+ },
  "sites": [
   {"addr": "0x40199bbc", "stock": "4004ddae", "op": "ptr", "target": "digictl_mdraw"},
   {"addr": "0x400ED94E", "stock": "4fefffe87008", "op": "jmp", "target": "digictl_cc_disp"},
@@ -33,6 +38,47 @@
   {"addr": "0x400917b4", "stock": "4eb9400f8e7c", "op": "jsr", "target": "tonesplash_flush"},
   {"addr": "0x40091ab8", "stock": "4eb9400f8e7c", "op": "jsr", "target": "tonesplash_flush"}
  ],
+ "ports": {
+  "1.44": {
+   "defsym": {
+    "CC_RET": "0x400EDBC8",
+    "SPLASH_DIFF": "0x400f916e",
+    "SPLASH_FLUSH": "0x400f90f0"
+   },
+   "cflags": [
+    "-DDN_TEXTF_ADDR=0x400DE0DC",
+    "-DDN_FONT5_ADDR=0x402319C8",
+    "-DDN_INVALIDATE_ADDR=0x400E539E",
+    "-DDN_OP_NEW_ADDR=0x400E96C0",
+    "-DDN_STOCK_DRAW_ADDR=0x4004DDCE",
+    "-DDN_FW_ADDR=0x402319DC",
+    "-DDN_FO_ADDR=0x40231ADC",
+    "-DDN_FB_ADDR=0x40231CDC",
+    "-DDN_PAT_BASE=0x407FD414",
+    "-DDN_PAT_PTR=0x4138F214",
+    "-DDN_MASTER_VT=0x40199EFC",
+    "-DDN_FBP_ADDR=0x40241e44",
+    "-DDN_VLINE_ADDR=0x400DCBA0",
+    "-DDN_FILLRECT_ADDR=0x400DD506",
+    "-DDN_FRAMERECT_ADDR=0x400DD2EA",
+    "-DSPLASH_FBP_ADDR=0x40241e44",
+    "-DSPLASH_INTRO_ISR=0x40090cfc"
+   ],
+   "sites": [
+    {"addr": "0x40199f0c", "stock": "4004ddce", "op": "ptr", "target": "digictl_mdraw"},
+    {"addr": "0x400EDBC2", "stock": "4fefffe87008", "op": "jmp", "target": "digictl_cc_disp"},
+    {"addr": "0x40090e78", "stock": "4eb9400f916e", "op": "jsr", "target": "tonesplash_diff"},
+    {"addr": "0x40091020", "stock": "4eb9400f916e", "op": "jsr", "target": "tonesplash_diff"},
+    {"addr": "0x4009132a", "stock": "4eb9400f916e", "op": "jsr", "target": "tonesplash_diff"},
+    {"addr": "0x400917dc", "stock": "4eb9400f916e", "op": "jsr", "target": "tonesplash_diff"},
+    {"addr": "0x40091ae0", "stock": "4eb9400f916e", "op": "jsr", "target": "tonesplash_diff"},
+    {"addr": "0x40091018", "stock": "4eb9400f90f0", "op": "jsr", "target": "tonesplash_flush"},
+    {"addr": "0x40091322", "stock": "4eb9400f90f0", "op": "jsr", "target": "tonesplash_flush"},
+    {"addr": "0x400917d4", "stock": "4eb9400f90f0", "op": "jsr", "target": "tonesplash_flush"},
+    {"addr": "0x40091ad8", "stock": "4eb9400f90f0", "op": "jsr", "target": "tonesplash_flush"}
+   ]
+  }
+ },
  "subscribe": [
   {"event": "ev_render_in",  "fn": "digictl_mod_in",        "order": 40},
   {"event": "ev_render_in",  "fn": "digiring_render_in",    "order": 50},

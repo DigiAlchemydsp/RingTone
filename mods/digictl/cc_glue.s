@@ -25,4 +25,4 @@ digictl_cc_disp:
         addq.l  #8, %sp
         lea     -24(%sp), %sp               | displaced instruction 1
         moveq   #8, %d0                     | displaced instruction 2
-        jmp     0x400ED954                  | stock router continues
+        jmp     CC_RET                      | stock router continues

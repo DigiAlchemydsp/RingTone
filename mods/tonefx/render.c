@@ -14,9 +14,18 @@ typedef unsigned short u16;
 typedef unsigned int u32;
 typedef int i32;
 
-#define FBP      (*(volatile u32 *)0x40241a44)
-#define PIT3_VEC (*(volatile u32 *)0x40000340)
-#define INTRO_ISR ((u32)0x40090cdc)
+#ifndef SPLASH_FBP_ADDR
+#define SPLASH_FBP_ADDR  0x40241a44
+#endif
+#ifndef SPLASH_PIT3_VEC_ADDR
+#define SPLASH_PIT3_VEC_ADDR 0x40000340
+#endif
+#ifndef SPLASH_INTRO_ISR
+#define SPLASH_INTRO_ISR 0x40090cdc
+#endif
+#define FBP      (*(volatile u32 *)SPLASH_FBP_ADDR)
+#define PIT3_VEC (*(volatile u32 *)SPLASH_PIT3_VEC_ADDR)
+#define INTRO_ISR ((u32)SPLASH_INTRO_ISR)
 #define DTCN0    (*(volatile u32 *)0xFC07000C)   /* DTIM0 free-running counter */
 
 static u8 *fb;

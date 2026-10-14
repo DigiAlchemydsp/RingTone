@@ -39,11 +39,28 @@
 #include "../../src/corea.h"
 #include "../../src/sin256.h"
 
-#define DN_TEXTF      ((void (*)(void *, const void *, int, int, int, const char *, ...))0x400DDE68)
-#define DN_FONT5      ((const void *)0x402315C8)
-#define DN_INVALIDATE ((void (*)(void *))0x400E512A)
-#define DN_OP_NEW     ((int *(*)(unsigned))0x400E944C)
-#define DN_STOCK_DRAW ((void (*)(void *, void *))0x4004DDAE)
+/* Firmware addresses are 1.43's by default; the OS 1.44 "ports" entry in
+ * mod.json overrides the *_ADDR macros through "cflags" (docs/ADAPTING.md). */
+#ifndef DN_TEXTF_ADDR
+#define DN_TEXTF_ADDR      0x400DDE68
+#endif
+#ifndef DN_FONT5_ADDR
+#define DN_FONT5_ADDR      0x402315C8
+#endif
+#ifndef DN_INVALIDATE_ADDR
+#define DN_INVALIDATE_ADDR 0x400E512A
+#endif
+#ifndef DN_OP_NEW_ADDR
+#define DN_OP_NEW_ADDR     0x400E944C
+#endif
+#ifndef DN_STOCK_DRAW_ADDR
+#define DN_STOCK_DRAW_ADDR 0x4004DDAE
+#endif
+#define DN_TEXTF      ((void (*)(void *, const void *, int, int, int, const char *, ...))DN_TEXTF_ADDR)
+#define DN_FONT5      ((const void *)DN_FONT5_ADDR)
+#define DN_INVALIDATE ((void (*)(void *))DN_INVALIDATE_ADDR)
+#define DN_OP_NEW     ((int *(*)(unsigned))DN_OP_NEW_ADDR)
+#define DN_STOCK_DRAW ((void (*)(void *, void *))DN_STOCK_DRAW_ADDR)
 #define DN_FXKIND     0
 #define DN_FEKIND     1
 #define DN_EQKIND     2
@@ -56,16 +73,27 @@
 #define DN_DESKIND    9
 #define DN_SPCKIND   10
 #define DN_NPAGES    11
-#define DN_K_UP       15           /* the UP key id */
+#define DN_K_UP       15           /* the UP key id (enters the macro tree) */
+#define DN_K_DOWN     16           /* the DOWN key id (also toggles the tree) */
 #define DN_TRIG1      26           /* trig key ids 26..41 = trigs 1..16 */
 #define DN_TRIG16     41
 #define DC_PER_STEP   4
+#define DC_ACT_TICKS  20           /* frames a moved slider shows its value */
 #define DG_TOP        53            /* rows 53..63 are the stock status bar */
 
 /* the stock 5-px font tables (glyph widths, bitmap offsets, bitmap bytes) */
-#define DN_FW  ((const unsigned char *)0x402315DC)
-#define DN_FO  ((const unsigned short *)0x402316DC)
-#define DN_FB  ((const unsigned char *)0x402318DC)
+#ifndef DN_FW_ADDR
+#define DN_FW_ADDR 0x402315DC
+#endif
+#ifndef DN_FO_ADDR
+#define DN_FO_ADDR 0x402316DC
+#endif
+#ifndef DN_FB_ADDR
+#define DN_FB_ADDR 0x402318DC
+#endif
+#define DN_FW  ((const unsigned char *)DN_FW_ADDR)
+#define DN_FO  ((const unsigned short *)DN_FO_ADDR)
+#define DN_FB  ((const unsigned char *)DN_FB_ADDR)
 
 extern int digieq_on, digieq_lo, digieq_hi;
 extern int digiring_on, digiring_depth, digiring_freq;
@@ -95,7 +123,10 @@ int digimod_dest;                    /* 0 off, 1 ring dep, 2 ring frq, 3 fold,
                                         4 EQ low, 5 EQ high.
                                         Parked: no page readout. */
 int digimod_voice = 1;               /* 1..8 */
-#define DN_FREQ_REC(v) (*(volatile unsigned short *)(0x80003544u + ((v) - 1) * 0x9E))
+#ifndef DN_FREQ_REC_ADDR
+#define DN_FREQ_REC_ADDR 0x80003544u
+#endif
+#define DN_FREQ_REC(v) (*(volatile unsigned short *)(DN_FREQ_REC_ADDR + ((v) - 1) * 0x9E))
 
 /* ---- per-pattern storage -----------------------------------------------------
  * Our FX params have no stock field, so they are kept inside the saved pattern.
@@ -106,7 +137,12 @@ int digimod_voice = 1;               /* 1..8 */
  * travels with the pattern. We keep our settings there (pattern + 0x1040), so
  * they follow a pattern switch / reload and survive a project save like stock
  * parameters. */
+#ifndef DN_PAT_BASE
 #define DN_PAT_BASE   0x407FC414u
+#endif
+#ifndef DN_PAT_PTR
+#define DN_PAT_PTR    0x4138E214u
+#endif
 #define DN_PAT_STRIDE 0x1611Du
 #define DN_PAT_SLOTS  128u
 #define DN_STORE_OFF  0x1040u
@@ -135,7 +171,7 @@ static int dn_sync_ph;                          /* ticks between block compares 
 
 static unsigned char *dn_store_slot(void)
 {
-    unsigned p = *(volatile unsigned *)0x4138E214u;
+    unsigned p = *(volatile unsigned *)DN_PAT_PTR;
     if (p < DN_PAT_BASE ||
         p >= DN_PAT_BASE + (unsigned)DN_PAT_SLOTS * DN_PAT_STRIDE)
         return 0;
@@ -224,7 +260,7 @@ static int dn_sync2_ph;                         /* ticks between block compares 
 
 static unsigned char *dn_store2_slot(void)
 {
-    unsigned p = *(volatile unsigned *)0x4138E214u;
+    unsigned p = *(volatile unsigned *)DN_PAT_PTR;
     if (p < DN_PAT_BASE ||
         p >= DN_PAT_BASE + (unsigned)DN_PAT_SLOTS * DN_PAT_STRIDE)
         return 0;
@@ -287,7 +323,7 @@ static void dn_store2_sync(void)
 
 static int clampi(int v, int lo, int hi);
 static void dg_slider(void *bmp, int x, int val, int vmax);
-static void dg_slot(void *bmp, int x, const char *s, int v);
+static void dg_slot(void *bmp, int x, int id, const char *s, int v);
 
 /* ---- MIDI CC control ---------------------------------------------------------
  * cc_glue.s hooks the incoming CC router (0x400ED94E) and calls this with the
@@ -586,10 +622,14 @@ static const int dc_kinds[DN_NPAGES] = {
     DN_PFKIND, DN_WASHKIND, DN_RADKIND, DN_DESKIND, DN_SPCKIND
 };
 
+#ifndef DN_MASTER_VT
 #define DN_MASTER_VT  0x40199BAC
+#endif
 static char *dc_view;               /* the master view, from its last draw */
 static int dc_vis;                  /* frames since the master view was drawn */
 static int dc_meter_vis;            /* FOLD page (the meter reader) is up */
+static int dc_act_id;               /* last-moved slider's encoder id (0 = none) */
+static int dc_act_ttl;              /* frames left to show that slider's value */
 static int dc_perf_prev = -1;       /* FX kind to return to from the macro tree */
 static int dc_func;                 /* FUNC held: encoder turns snap to 0/127 */
 static int dc_rate = 3;             /* ticks between redraws (animated pages) */
@@ -793,7 +833,10 @@ static int dg_strw(const char *s, int sc)
  * DN_FRAMERECT cost a firmware call per pixel or span; these write the bytes
  * directly. Coordinates are the stock ones (y = 0 at the BOTTOM), so a stock
  * row y is display row 63-y. */
-#define DN_FBP (*(volatile unsigned *)0x40241a44u)
+#ifndef DN_FBP_ADDR
+#define DN_FBP_ADDR 0x40241a44u
+#endif
+#define DN_FBP (*(volatile unsigned *)DN_FBP_ADDR)
 static unsigned char *dg_fb;
 
 static void dg_fill(int x0, int y0, int x1, int y1, int c)
@@ -952,13 +995,14 @@ static void dg_vbar(void *bmp, int x0, int x1, int num, int den)
     dg_fill(x0, y0, x1, y0 + f, 1);
 }
 
-/* the L/R output meter, far right, when H has switched it on */
+/* the L/R output meter, left of the right-side page arrow (the old far-right
+ * bars overlapped the '>' glyph and the TUN slider frame) */
 static void dg_meter(void *bmp)
 {
     if (!digimeter_on)
         return;
-    dg_vbar(bmp, 120, 121, digimeter_l, 60);
-    dg_vbar(bmp, 125, 126, digimeter_r, 60);
+    dg_vbar(bmp, 108, 109, digimeter_l, 60);
+    dg_vbar(bmp, 113, 114, digimeter_r, 60);
 }
 
 static void dg_fx_page(void *bmp)
@@ -968,8 +1012,8 @@ static void dg_fx_page(void *bmp)
     dg_ring(bmp);
     dg_slider(bmp, 96, digiring_on ? digiring_depth : 0, 127);    /* depth */
     dg_slider(bmp, 118, digiring_freq, 127);                      /* rate  */
-    dg_slot(bmp, 96, "DEP", digiring_depth);
-    dg_slot(bmp, 118, "FRQ", digiring_freq);
+    dg_slot(bmp, 96, 5, "DEP", digiring_depth);      /* E depth */
+    dg_slot(bmp, 118, 6, "FRQ", digiring_freq);      /* F frequency */
     dg_title(bmp, "RING");
 }
 
@@ -1002,21 +1046,51 @@ static const char *dg_modename(int m)
     return n[m & 3];
 }
 
+/* The vertical slider: the full previous height (y 10..44), the caption sits
+ * on the bottom row (y 1) so it clears the slider frame. */
 static void dg_slider(void *bmp, int x, int val, int vmax)
 {
-    int y0 = 20, y1 = 44, pos;    /* leave room below for the label + value */
+    int y0 = 10, y1 = 44, pos;
     DN_FRAMERECT(bmp, x - 2, y0 - 1, x + 2, y1 + 1, 1);
     val = clampi(val, 0, vmax);
     pos = y0 + val * (y1 - y0) / vmax;
     dg_fill(x - 1, y0, x + 1, pos, 1);
 }
 
-/* a short label above its value, both centred on the slider column x, at the
- * bottom of the screen */
-static void dg_slot(void *bmp, int x, const char *s, int v)
+/* The x where a value string starts so its MIDDLE digit is centred on the
+ * slider column x: "35" centres on the '3', "127" on the '2' (2 digits -> the
+ * first, 3 digits -> the middle). */
+static int dg_num_x(int x, int v)
 {
-    DN_TEXTF(bmp, DN_FONT5, x - dg_strw(s, 1) / 2, 12, -1, "%s", s);
-    DN_TEXTF(bmp, DN_FONT5, x - ((v >= 100) ? 9 : (v >= 10) ? 6 : 3), 4, -1, "%d", v);
+    char s[4];
+    int n = 0, w = 0, pre = 0, mid, i;
+    if (v >= 100) {
+        s[n++] = (char)('0' + v / 100); s[n++] = (char)('0' + (v / 10) % 10);
+        s[n++] = (char)('0' + v % 10);
+    } else if (v >= 10) {
+        s[n++] = (char)('0' + v / 10); s[n++] = (char)('0' + v % 10);
+    } else {
+        s[n++] = (char)('0' + v);
+    }
+    s[n] = 0;
+    for (i = 0; i < n; i++)
+        w += DN_FW[(unsigned char)s[i]] + 1;
+    mid = (n - 1) / 2;                          /* middle digit (left of centre) */
+    for (i = 0; i < mid; i++)
+        pre += DN_FW[(unsigned char)s[i]] + 1;
+    return x - (pre + DN_FW[(unsigned char)s[mid]] / 2);
+}
+
+/* The slot caption under a slider column x, one line on the bottom row. Idle it
+ * shows the label; while its encoder is being moved the label is replaced by
+ * the live value (centred on its middle digit). `id` is the encoder that edits
+ * this slot (the FOLD amount passes 5 for E/F/G/H). */
+static void dg_slot(void *bmp, int x, int id, const char *s, int v)
+{
+    if (dc_act_ttl > 0 && id == dc_act_id)
+        DN_TEXTF(bmp, DN_FONT5, dg_num_x(x, v), 1, -1, "%d", v);
+    else
+        DN_TEXTF(bmp, DN_FONT5, x - dg_strw(s, 1) / 2, 1, -1, "%s", s);
 }
 
 static void dg_fold_page(void *bmp)
@@ -1031,7 +1105,7 @@ static void dg_fold_page(void *bmp)
     dg_bigname(bmp, m);                                  /* big, screen-centred */
     dg_slider(bmp, 100, digifold_on ? digifold_amount : 0, 127);
     dg_meter(bmp);
-    dg_slot(bmp, 100, "AMT", digifold_amount);
+    dg_slot(bmp, 100, 5, "AMT", digifold_amount);    /* E/F/G/H amount */
     dg_title(bmp, "FOLD");
 }
 
@@ -1124,8 +1198,8 @@ static void dg_crush_page(void *bmp)
     dg_slider(bmp, 96, digicrush_on ? digicrush_amount : 0, 127);   /* depth */
     dg_slider(bmp, 118, digicrush_tune, 127);                       /* rate  */
     dg_meter(bmp);
-    dg_slot(bmp, 96, "AMT", digicrush_amount);
-    dg_slot(bmp, 118, "TUN", digicrush_tune);
+    dg_slot(bmp, 96, 5, "AMT", digicrush_amount);    /* E amount */
+    dg_slot(bmp, 118, 6, "TUN", digicrush_tune);     /* F tune   */
     dg_title(bmp, "CRUSH");
 }
 
@@ -1219,23 +1293,23 @@ static void dg_wave_bars(void *bmp, const char *m, const char *title, int which)
         dg_slider(bmp, 86, digiwave_speed, 127);
         dg_slider(bmp, 104, digiwave_pdepth, 127);
         dg_slider(bmp, 122, digiwave_pmix, 127);
-        dg_slot(bmp, 86, "SPD", digiwave_speed);
-        dg_slot(bmp, 104, "DEP", digiwave_pdepth);
-        dg_slot(bmp, 122, "MIX", digiwave_pmix);
+        dg_slot(bmp, 86, 5, "SPD", digiwave_speed);
+        dg_slot(bmp, 104, 6, "DEP", digiwave_pdepth);
+        dg_slot(bmp, 122, 7, "MIX", digiwave_pmix);
     } else if ((digiwave_smode * 3 / 128) == 0) {   /* FLAN: SPD, DEP, MIX, FB */
         dg_slider(bmp, 88, digiwave_speed, 127);
         dg_slider(bmp, 100, digiwave_sdepth, 127);
         dg_slider(bmp, 112, digiwave_mix, 127);
         dg_slider(bmp, 124, digiwave_fb, 127);
-        dg_slot(bmp, 88, "SPD", digiwave_speed);
-        dg_slot(bmp, 100, "DEP", digiwave_sdepth);
-        dg_slot(bmp, 112, "MIX", digiwave_mix);
-        dg_slot(bmp, 124, "FB", digiwave_fb);
+        dg_slot(bmp, 88, 5, "SPD", digiwave_speed);
+        dg_slot(bmp, 100, 6, "DEP", digiwave_sdepth);
+        dg_slot(bmp, 112, 7, "MIX", digiwave_mix);
+        dg_slot(bmp, 124, 8, "FB", digiwave_fb);
     } else {                             /* PAN / WIDE: SPD, DEP */
         dg_slider(bmp, 98, digiwave_speed, 127);
         dg_slider(bmp, 118, digiwave_sdepth, 127);
-        dg_slot(bmp, 98, "SPD", digiwave_speed);
-        dg_slot(bmp, 118, "DEP", digiwave_sdepth);
+        dg_slot(bmp, 98, 5, "SPD", digiwave_speed);
+        dg_slot(bmp, 118, 6, "DEP", digiwave_sdepth);
     }
     dg_title(bmp, title);
 }
@@ -1290,7 +1364,7 @@ static void dg_macro_frame(void *bmp, const char *title, int on, int amt)
     char num[4];
     dg_slider(bmp, 121, on ? amt : 0, 127);   /* empty = off, filled = on */
     dg_wa_num(num, amt);
-    DN_TEXTF(bmp, DN_FONT5, 121 - dg_strw(num, 1) / 2, 4, -1, "%s", num);
+    DN_TEXTF(bmp, DN_FONT5, 121 - dg_strw(num, 1) / 2, 1, -1, "%s", num);
     DN_TEXTF(bmp, DN_FONT5, (128 - dg_strw(title, 1)) / 2, 24, -1, "%s", title);
 }
 
@@ -1473,6 +1547,11 @@ void digictl_tick(void *ctrl)
     (void)ctrl;
     dn_store_sync();
     dn_store2_sync();
+    if (dc_act_ttl > 0) {
+        dc_act_ttl--;
+        if (!dc_act_ttl && dc_view_open(dc_view))
+            DN_INVALIDATE(dc_view);          /* redraw the caption back to idle */
+    }
     if (dc_vis)
         dc_vis--;
     if (!dc_vis)
@@ -1610,6 +1689,14 @@ int digictl_enc(void *brain, void *ev)
         default: break;
         }
     }
+    /* Remember which slider just moved, so its caption can show the value on
+     * the same line for a moment (see dg_slot). The FOLD amount has one slider
+     * edited by E/F/G/H, so all four report slot id 5. */
+    if (k == DN_FXKIND || k == DN_FEKIND || k == DN_CRKIND ||
+        k == DN_WVKIND || k == DN_WSKIND) {
+        dc_act_id = (k == DN_FEKIND && id >= 5 && id <= 8) ? 5 : id;
+        dc_act_ttl = DC_ACT_TICKS;
+    }
     dn_store_dirty = 1;
     DN_INVALIDATE(dc_view);
     return 1;
@@ -1654,9 +1741,10 @@ int digictl_key(void *brain, void *ev)
         return 0;
     }
 
-    /* UP: from the FX tree to PERFORM + macros, and back to the FX page we
-     * came from (or FOLD). */
-    if (id == DN_K_UP && (flags & 1) && !(flags & 0x10) && !(flags & 8)) {
+    /* UP or DOWN: from the FX tree to PERFORM + macros, and back to the FX page
+     * we came from (or FOLD). Either arrow toggles the macro tree. */
+    if ((id == DN_K_UP || id == DN_K_DOWN) &&
+        (flags & 1) && !(flags & 0x10) && !(flags & 8)) {
         int i;
         for (i = 0; i < 6; i++)
             if (dc_tree1[i] == k) {

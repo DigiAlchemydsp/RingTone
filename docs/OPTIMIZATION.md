@@ -225,10 +225,11 @@ Ordered roughly by how much they bought.
 | flash spare (3.2b patch) | ≈1.69 MB |
 | sites / relocations | 11 / 646; imports nothing |
 
-Budgets: `.run`+`.bss` share 128 KB across every linked mod; the delay line is
-the single largest allocation. If it ever needs to grow, the `bulk` region
-(0x44000000–0x47BE0000) needs core-dn1 3.2 as a claimed region; today the suite
-runs on core-dn1 2.0a.
+Budgets: on core-dn1 2.0a `.run`+`.bss` shared 128 KB across every linked mod;
+the delay line is the single largest allocation. The suite now runs on
+**core-dn1 4.0**, whose mods' RAM is **0x43EC0000–0x44000000 (1.25 MB)**; the
+`bulk` region (0x44000000–0x47BE0000) is a core-dn1 3.2 feature for a claimed
+region (see §12).
 
 ## 7. Verified vs pending
 
@@ -510,3 +511,69 @@ added).
 Verified: tree-1 cycle [FOLD,CRUSH,RING,STEREO,PITCH,TILT], tree-2 cycle
 [PERFORM,WASH,RADIO,DESTROY,SPACE], UP round-trips; FUNC+E up = 127 / down = 0;
 all 11 pages captured. Build .run 28180, .bss 19446, imports nothing.
+
+## 12. Core-dn1 4.0 migration, UI pass, and the insert-audio attempt
+
+### 12.1 core-dn1 4.0 / elekloader 0.5.0
+
+The suite was moved from elekloader 0.4.0 + core-dn1 2.0a to **elekloader 0.5.0**
++ **core-dn1 4.0**. The mod is unchanged in shape (subscription-only, format 2,
+`imports nothing`); it links as `core 4.0 > tonefx 3.5r` and patches/verifies. The
+only core change that touches us is the mods' RAM base: **0x43EC0000, 1.25 MB**
+(was 128 KB at `0x47BE0000`). Build `.run 28889`, `.bss 19454`, 997 relocs. A new
+Windows app (`elekloader-0.5.0-windows.exe`) was built with the two Digitone cores
+bundled.
+
+The suite also gained an **OS 1.44 port**: the firmware addresses are now
+`#ifndef *_ADDR` defaults (1.43) overridable through `ports.1.44.cflags`, and the
+asm targets are `defsym` symbols overridden in `ports.1.44.defsym`; `ports.1.44`
+carries the 11 1.44 sites. One source builds `tonefx-3.5r.elemod` (1.43) and
+`tonefx-3.5r-os1.44.elemod` (1.44); both `build`/`lint`/`patch` clean, all sites
+byte-checked against their stock image, and **1.44 is hardware-verified**.
+(digiemu cannot settle OS 1.44, so 1.44 is not emulator-tested.) The 1.43 main OS
+is byte-identical to before the port (`49761d50…`).
+
+### 12.2 UI pass
+
+- `dg_slider` is the full previous height again (y 10..44); the slot caption
+  moved to the bottom row (y 1) to clear it.
+- The caption is one line: label when idle, the live value while that encoder is
+  moved (`DC_ACT_TICKS` = 20 frames), the value centred on its **middle digit**
+  (`dg_num_x`).
+- The output meter moved from x 120/125 to **x 108/113** (clear of the `>` arrow
+  and the CRUSH TUN slider frame).
+- **DOWN** (`DN_K_DOWN` 16) now toggles the macro tree exactly like UP.
+
+### 12.3 #2 fuse the master passes as an insert — TRIED, REVERTED (+15 % CPU/DSP)
+
+**What was built.** core-dn1 4.0's `CORE_AUDIO_INSERT` lets an owner take the
+master stage's output and return it in its place, in **one** callback. The seven
+`ev_render_out` passes (ring/EQ/crush/fold/wave/ceiling/meter) were fused into one
+`tonefx_master(out, in)`: the six DSP modules were split into
+`_prep()` / `_frame(l,r)` / `_done()` and the whole thing compiled as a **unity
+build** (`master.c` `#include`s the modules) so GCC inlines the frames into the
+single loop. The suite contributed a `core_audio` record
+(`{1, tonefx_master, CORE_AUDIO_INSERT}`) and dropped the seven `ev_render_out`
+subscriptions. Build `.run 29445`, `.bss 19628`.
+
+**The scale bug (caught by a live A/B).** The core hands an insert its buffers in
+**Q1.31**: it shifts the master stage's 24-bit output left by 8 before the call
+and shifts the owner's result right by 8 after. The DSP modules are calibrated
+for the SSI buffer's **24-bit** scale, so the first build clamped hard at the
+ceiling — baseline RMS **39** vs the pre-insert **1114**. Adding `>>8` on the way
+in and `<<8` on the way out fixed it (baseline **1109**, and raising FOLD moved
+it 1638→3124, matching the pre-insert build's response).
+
+**Why it was reverted.** On hardware the insert build **raised CPU consumption and
+DSP load by ~15 %**. The redundant load/store the fusion removes (~640 memory
+ops/block) does not pay for what the insert path adds: the core runs the stock
+master stage *and* its Q1.31 conversions (in and out) *and* hands the owner only
+the share of the block left after the stock render, and the unity build's inlining
+does not fully absorb the per-frame `_frame` calls. **Do not retry the fused
+master as an insert.** The source was restored and the rebuilt elemod is
+byte-identical to the pre-insert build (`868B5A77…`).
+
+**Lesson:** a structural change that is a win in an isolated cycle model
+(`cftiming`) can still be a loss once it moves where the code runs (a different
+stage, with core's own conversion and block-share cost). Measure on hardware.
+

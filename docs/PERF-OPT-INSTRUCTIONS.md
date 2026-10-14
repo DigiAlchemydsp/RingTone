@@ -7,7 +7,7 @@ ledger). Work one item at a time; measure; commit; record.
 
 ```powershell
 $env:PATH="C:\SysGCC\m68k-elf\bin;"+$env:PATH; $env:ELEKLOADER_CROSS="m68k-elf-"
-$env:PYTHONPATH="C:\Users\benan\Music\ELEKTRON\elekloader"
+$env:PYTHONPATH="C:\Users\benan\Music\ELEKTRON\00 ELEKLOADER NEW\elekloader-main"
 $stock="C:\Users\benan\Music\ELEKTRON\Digitone_and_Digitone_Keys_OS1.43.syx"
 $py="C:\Users\benan\AppData\Local\Temp\opencode\digiemu-venv\Scripts\python.exe"
 ```

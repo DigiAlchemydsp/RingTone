@@ -15,10 +15,21 @@
 #define DIGITONE_COREA_H
 
 /* The Digitone mk1's vline/fillRect/frameRect, Signature: (bmp,x0,y0,x1,y1,c)
- * with y = 0 the BOTTOM row. (os153.inc/dn143.inc.) */
-#define DN_VLINE     ((void (*)(void *, int, int, int, int))0x400DC92C)
-#define DN_FILLRECT  ((void (*)(void *, int, int, int, int, int))0x400DD292)
-#define DN_FRAMERECT ((void (*)(void *, int, int, int, int, int))0x400DD076)
+ * with y = 0 the BOTTOM row. (os153.inc/dn143.inc.) The addresses are 1.43's by
+ * default; a mod's OS 1.44 port overrides the *_ADDR macros through "cflags"
+ * (docs/ADAPTING.md). */
+#ifndef DN_VLINE_ADDR
+#define DN_VLINE_ADDR     0x400DC92C
+#endif
+#ifndef DN_FILLRECT_ADDR
+#define DN_FILLRECT_ADDR  0x400DD292
+#endif
+#ifndef DN_FRAMERECT_ADDR
+#define DN_FRAMERECT_ADDR 0x400DD076
+#endif
+#define DN_VLINE     ((void (*)(void *, int, int, int, int))DN_VLINE_ADDR)
+#define DN_FILLRECT  ((void (*)(void *, int, int, int, int, int))DN_FILLRECT_ADDR)
+#define DN_FRAMERECT ((void (*)(void *, int, int, int, int, int))DN_FRAMERECT_ADDR)
 
 #define DN_DMA_CH54_SADDR (*(volatile unsigned *)0xFC0456C0u)
 

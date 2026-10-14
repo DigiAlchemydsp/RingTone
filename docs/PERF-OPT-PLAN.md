@@ -11,7 +11,7 @@ updated: `docs/OPTIMIZATION.md`.
 | # | item | impact | effort | risk | audio | status |
 |---|---|---|---|---|---|---|
 | 1 | Direct framebuffer UI drawing | **high** | M | low | none | **landed** |
-| 2 | Fuse the master passes | **very high** | L | med | none | parked |
+| 2 | Fuse the master passes | **very high** | L | med | none | **reverted (insert)** |
 | 3 | Partial screen clear | med | S | low | none | obviated |
 | 4 | Meter gated on visibility | med | S | low | none | **landed** |
 | 5 | Ceiling gated on "hot" | low–med | S | low | none | **reverted** |
@@ -82,6 +82,16 @@ for a refactor of six modules into one fused loop with shared per-frame state
 and a bit-exact A/B. Sound, but not a drive-by: park it for a focused pass. (A
 cheaper partial version — fusing only the two heaviest adjacent stages — does
 not capture the cross-stage load/store saving, so it is not worth it either.)
+
+**Update — the insert form was built and is a regression.** With core-dn1 4.0 the
+fusion was implemented as a `CORE_AUDIO_INSERT` owner (one `render(out, in)`
+callback, the modules as a unity build with `_prep`/`_frame`/`_done`). It works
+and is bit-for-bit correct once the core's Q1.31 in/out is converted, but on
+hardware it **raised CPU/DSP load ~15 %** — the removed load/store does not pay
+for the core's Q1.31 conversions, the stock master stage still running, the
+owner getting only the block's leftover share, and the per-frame call overhead.
+**Reverted; do not retry #2 as an insert.** Full write-up: `docs/OPTIMIZATION.md`
+§12.3.
 
 ## 3. Partial screen clear
 
