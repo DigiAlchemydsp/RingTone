@@ -74,7 +74,7 @@ extern int digimeter_on, digimeter_l, digimeter_r;
 extern int digicrush_on, digicrush_mode, digicrush_amount, digicrush_tune;
 extern int digiwave_on, digiwave_son, digiwave_pmode, digiwave_smode, digiwave_page;
 extern int digiwave_speed, digiwave_pdepth, digiwave_sdepth;
-extern int digiwave_mix, digiwave_fb;
+extern int digiwave_mix, digiwave_fb, digiwave_pmix;
 
 /* MACRO page state (owned here, stored per pattern). WASH = reverb send +
  * a WAVE wobble: while it is on, it drives the WAVE engine into WOB and turns
@@ -207,15 +207,15 @@ static void dn_store_sync(void)
  * Block 1 (pattern+0x1040) is full (28 params); this is MIDI track 1's unused
  * 64-byte block (pattern+0x1410), same idea, magic "DGX2". */
 #define DN_STORE2_OFF  0x1410u
-#define DN_STORE2_N    6
-#define DN_STORE2_VER  1
+#define DN_STORE2_N    7
+#define DN_STORE2_VER  2
 #define DN_STORE2_MAG(a) ((a)[0] == 0x44 && (a)[1] == 0x47 && \
                           (a)[2] == 0x58 && (a)[3] == 0x32 && \
                           (a)[5] == DN_STORE2_VER)              /* "DGX2" v1 */
 
 static int *const dn_fxparam2[DN_STORE2_N] = {
     &dgmac2_on, &dgmac2_amount, &dgmac3_on, &dgmac3_amount,
-    &dgmac4_on, &dgmac4_amount,
+    &dgmac4_on, &dgmac4_amount, &digiwave_pmix,
 };
 static unsigned char *dn_store2_blk;
 static unsigned char dn_store2_copy[8 + 2 * DN_STORE2_N];
@@ -286,6 +286,7 @@ static void dn_store2_sync(void)
 }
 
 static int clampi(int v, int lo, int hi);
+static void dg_slider(void *bmp, int x, int val, int vmax);
 
 /* ---- MIDI CC control ---------------------------------------------------------
  * cc_glue.s hooks the incoming CC router (0x400ED94E) and calls this with the
@@ -588,7 +589,8 @@ static const int dc_kinds[DN_NPAGES] = {
 static char *dc_view;               /* the master view, from its last draw */
 static int dc_vis;                  /* frames since the master view was drawn */
 static int dc_meter_vis;            /* FOLD page (the meter reader) is up */
-static int dc_perf_prev;            /* page index to return to from PERF */
+static int dc_perf_prev = -1;       /* FX kind to return to from the macro tree */
+static int dc_func;                 /* FUNC held: encoder turns snap to 0/127 */
 static int dc_rate = 3;             /* ticks between redraws (animated pages) */
 static int dc_ctr;                  /* ticks since the last redraw */
 static int dc_eacc[10];             /* per-encoder accumulation (ids 0..9), as
@@ -698,6 +700,27 @@ static int dc_find_kind(char *view, int k)
         if (v[i] == k)
             return i;
     return -1;
+}
+
+/* The two page trees. LEFT/RIGHT cycle within the active tree; UP moves between
+ * them. Tree 1 = the FX pages, in play order (FOLD - CRUSH - RING - STEREO -
+ * PITCH - TILT); tree 2 = PERFORM + the four macros, reached with UP. PERFORM is
+ * not part of the tree-1 cycle. */
+static const int dc_tree1[6] = {
+    DN_FEKIND, DN_CRKIND, DN_FXKIND, DN_WSKIND, DN_WVKIND, DN_EQKIND
+};
+static const int dc_tree2[5] = {
+    DN_PFKIND, DN_WASHKIND, DN_RADKIND, DN_DESKIND, DN_SPCKIND
+};
+
+static int dc_goto(char *view, int kind)
+{
+    int pos = dc_find_kind(view, kind);
+    if (pos < 0)
+        return 0;
+    *(int *)(view + 144) = pos;
+    DN_INVALIDATE(view);
+    return 1;
 }
 
 static void add_page(char *view)
@@ -823,6 +846,13 @@ static void dg_title(void *bmp, const char *s)
     DN_TEXTF(bmp, DN_FONT5, (128 - dg_strw(s, 1)) / 2, 12, -1, "%s", s);
 }
 
+/* the big FX mode name, centred on the screen (same centre as the title),
+ * sitting just above it */
+static void dg_bigname(void *bmp, const char *s)
+{
+    dg_text(bmp, (128 - dg_strw(s, 2)) / 2, 34, s, 2);
+}
+
 /* the little < > page arrows, centred vertically on each side */
 static void dg_arrows(void *bmp)
 {
@@ -902,13 +932,23 @@ static void dg_vbar(void *bmp, int x0, int x1, int num, int den)
     dg_fill(x0, y0, x1, y0 + f, 1);
 }
 
+/* the L/R output meter, far right, when H has switched it on */
+static void dg_meter(void *bmp)
+{
+    if (!digimeter_on)
+        return;
+    dg_vbar(bmp, 120, 121, digimeter_l, 60);
+    dg_vbar(bmp, 125, 126, digimeter_r, 60);
+}
+
 static void dg_fx_page(void *bmp)
 {
     dg_fill(0, 0, 127, DG_TOP - 1, 0);
     dg_arrows(bmp);
     dg_ring(bmp);
-    dg_vbar(bmp, 104, 106, digiring_on ? digiring_depth : 0, 127);
-    dg_vbar(bmp, 110, 112, digiring_freq, 127);
+    dg_slider(bmp, 100, digiring_on ? digiring_depth : 0, 127);   /* depth */
+    dg_slider(bmp, 114, digiring_freq, 127);                      /* rate  */
+    dg_meter(bmp);
     DN_TEXTF(bmp, DN_FONT5, 2, 4, -1, "DEP %d FRQ %d", digiring_depth, digiring_freq);
     dg_title(bmp, "RING");
 }
@@ -960,11 +1000,10 @@ static void dg_fold_page(void *bmp)
     dg_spiral(bmp, digifold_on ? digifold_amount : 0);   /* left */
     if (band > 3) band = 3;
     m = dg_modename(band);
-    dg_text(bmp, (128 - dg_strw(m, 2)) / 2, 36, m, 2);   /* big, centred */
-    dg_slider(bmp, 94, digifold_on ? digifold_amount : 0, 127);
-    dg_vbar(bmp, 106, 108, digimeter_l, 60);
-    dg_vbar(bmp, 113, 115, digimeter_r, 60);
-    DN_TEXTF(bmp, DN_FONT5, 89, 3, -1, "%d", digifold_amount);
+    dg_bigname(bmp, m);                                  /* big, screen-centred */
+    dg_slider(bmp, 100, digifold_on ? digifold_amount : 0, 127);
+    dg_meter(bmp);
+    DN_TEXTF(bmp, DN_FONT5, 2, 4, -1, "AMT %d", digifold_amount);
     dg_title(bmp, "FOLD");
 }
 
@@ -1006,7 +1045,7 @@ static void dg_eq_page(void *bmp)
 /* ---------------- CRUSH: big stage name + amount/tune bars ---------------- */
 static const char *dg_crushname(int m)
 {
-    static const char *const n[3] = { "BITS", "SR", "CRUNCH" };
+    static const char *const n[3] = { "BITS", "REDUX", "CRUNCH" };
     int b = m * 3 / 128;
     if (b > 2) b = 2;
     return n[b];
@@ -1053,7 +1092,10 @@ static void dg_crush_page(void *bmp)
     dg_fill(0, 0, 127, DG_TOP - 1, 0);
     dg_arrows(bmp);
     dg_crush_gfx(bmp);
-    dg_text(bmp, 44 + (82 - dg_strw(m, 2)) / 2, 36, m, 2);
+    dg_bigname(bmp, m);
+    dg_slider(bmp, 100, digicrush_on ? digicrush_amount : 0, 127);  /* depth */
+    dg_slider(bmp, 114, digicrush_tune, 127);                       /* rate  */
+    dg_meter(bmp);
     DN_TEXTF(bmp, DN_FONT5, 2, 4, -1, "AMT %d TUN %d",
              digicrush_amount, digicrush_tune);
     dg_title(bmp, "CRUSH");
@@ -1144,9 +1186,17 @@ static void dg_wave_bars(void *bmp, const char *m, const char *title, int which)
         dg_pitch_gfx(bmp);
     else
         dg_stereo_gfx(bmp);
-    dg_text(bmp, 44 + (82 - dg_strw(m, 2)) / 2, 36, m, 2);
-    DN_TEXTF(bmp, DN_FONT5, which == 0 ? 44 : 2, 4, -1, "SPD %d DEP %d",
+    dg_bigname(bmp, m);
+    dg_slider(bmp, 100, which == 0 ? digiwave_pdepth : digiwave_sdepth, 127);
+    dg_slider(bmp, 114, digiwave_speed, 127);
+    dg_meter(bmp);
+    DN_TEXTF(bmp, DN_FONT5, 2, 4, -1, "SPD %d DEP %d",
              digiwave_speed, which == 0 ? digiwave_pdepth : digiwave_sdepth);
+    if (which == 0)
+        DN_TEXTF(bmp, DN_FONT5, 2, 14, -1, "MIX %d", digiwave_pmix);
+    else
+        DN_TEXTF(bmp, DN_FONT5, 2, 14, -1, "MIX %d FB %d",
+                 digiwave_mix, digiwave_fb);
     dg_title(bmp, title);
 }
 
@@ -1336,7 +1386,8 @@ void digictl_mdraw(void *view, void *bmp)
     DN_STOCK_DRAW(view, bmp);
     dc_view = (char *)view;
     k = cur_kind(dc_view);
-    dc_meter_vis = (k == DN_FEKIND);      /* only the FOLD page reads the meter */
+    dc_meter_vis = (k == DN_FXKIND || k == DN_FEKIND || k == DN_CRKIND ||
+                    k == DN_WVKIND || k == DN_WSKIND);  /* pages that draw the meter */
     dc_rate = 3;
     if (k == DN_PFKIND)
         dc_rate = 8;                          /* static page */
@@ -1431,33 +1482,36 @@ int digictl_enc(void *brain, void *ev)
     d = dc_steps(id, delta);
     if (!d)
         return 1;
+    if (dc_func)
+        d = (d > 0) ? 127 : -127;   /* FUNC + turn: snap the param to 100% / 0% */
 
-    if (k == DN_FEKIND) {
+    if (k == DN_FEKIND) {                /* FOLD: A on, D mode, E amount, H meter */
         switch (id) {
         case 1: digifold_on = (d > 0); break;
         case 4: digifold_mode = clampi(digifold_mode + d, 0, 127); break;
-        case 5: case 6: case 7: case 8:     /* E/F/G/H all edit the amount */
-            digifold_amount = clampi(digifold_amount + d, 0, 127); break;
-        case 9: digimeter_on = (d > 0); break;
+        case 5: digifold_amount = clampi(digifold_amount + d, 0, 127); break;
+        case 8: digimeter_on = (d > 0); break;
         default: break;
         }
-    } else if (k == DN_EQKIND) {
+    } else if (k == DN_EQKIND) {         /* TILT: A on, E lo, G hi, H meter */
         switch (id) {
         case 1: digieq_on = (d > 0); break;
         case 5: digieq_lo = clampi(digieq_lo + d, 0, 127); break;
-        case 8: digieq_hi = clampi(digieq_hi + d, 0, 127); break;
+        case 7: digieq_hi = clampi(digieq_hi + d, 0, 127); break;
+        case 8: digimeter_on = (d > 0); break;
         default: break;
         }
-    } else if (k == DN_CRKIND) {
+    } else if (k == DN_CRKIND) {         /* CRUSH: A on, D mode, E amount, F tune, H meter */
         switch (id) {
         case 1: digicrush_on = (d > 0); break;
         case 4: digicrush_mode = clampi(digicrush_mode + d, 0, 127); break;
         case 5: digicrush_amount = clampi(digicrush_amount + d, 0, 127); break;
         case 6: digicrush_tune = clampi(digicrush_tune + d, 0, 127); break;
+        case 8: digimeter_on = (d > 0); break;
         default: break;
         }
-    } else if (k == DN_WVKIND) {             /* PITCH: WOB / SHFT */
-        digiwave_page = 0;                   /* editing this page activates it */
+    } else if (k == DN_WVKIND) {         /* PITCH: A on, D mode, E speed, F depth, H meter */
+        digiwave_page = 0;               /* editing this page activates it */
         switch (id) {
         case 1: digiwave_on = (d > 0); break;
         case 4: {
@@ -1468,12 +1522,16 @@ int digictl_enc(void *brain, void *ev)
         } break;
         case 5: digiwave_speed = clampi(digiwave_speed + d, 0, 127); break;
         case 6: digiwave_pdepth = clampi(digiwave_pdepth + d, 0, 127); break;
+        case 7: digiwave_pmix = clampi(digiwave_pmix + d, 0, 127); break;
+        case 8: digimeter_on = (d > 0); break;
         default: break;
         }
-    } else if (k == DN_WSKIND) {             /* STEREO: FLAN / PAN / WIDE */
+    } else if (k == DN_WSKIND) {         /* STEREO: A on, B fb, D mode, E speed, F depth,
+                                          * G mix, H meter */
         digiwave_page = 1;
         switch (id) {
         case 1: digiwave_son = (d > 0); break;
+        case 2: digiwave_fb = clampi(digiwave_fb + d, 0, 127); break;
         case 4: {
             int b = (digiwave_smode * 3) >> 7;
             if (b > 2) b = 2;
@@ -1483,7 +1541,7 @@ int digictl_enc(void *brain, void *ev)
         case 5: digiwave_speed = clampi(digiwave_speed + d, 0, 127); break;
         case 6: digiwave_sdepth = clampi(digiwave_sdepth + d, 0, 127); break;
         case 7: digiwave_mix = clampi(digiwave_mix + d, 0, 127); break;
-        case 8: digiwave_fb = clampi(digiwave_fb + d, 0, 127); break;
+        case 8: digimeter_on = (d > 0); break;
         default: break;
         }
     } else if (k >= DN_WASHKIND && k <= DN_SPCKIND) {   /* macros: A on/off, B..H amount */
@@ -1507,12 +1565,12 @@ int digictl_enc(void *brain, void *ev)
         case 8: digiwave_speed = clampi(digiwave_speed + d, 0, 127); break;
         default: break;
         }
-    } else {                             /* DN_FXKIND */
+    } else {                             /* RING: A on, E depth, F freq, H meter */
         switch (id) {
         case 1: digiring_on = (d > 0); break;
         case 5: digiring_depth = clampi(digiring_depth + d, 0, 127); break;
         case 6: digiring_freq = clampi(digiring_freq + d, 0, 127); break;
-        case 9: digimeter_on = (d > 0); break;
+        case 8: digimeter_on = (d > 0); break;
         default: break;
         }
     }
@@ -1526,11 +1584,16 @@ int digictl_key(void *brain, void *ev)
 {
     int id = *(int *)((char *)ev + 12);
     int flags = *(int *)((char *)ev + 16);
-    int k, *v, n, idx;
+    int k;
     (void)brain;
     if (!master_live(dc_view))
         return 0;
     k = cur_kind(dc_view);
+
+    if (id == 1) {                             /* FUNC: track, never consume */
+        dc_func = (flags & 1) != 0;
+        return 0;
+    }
 
     /* The trigs: momentary pads while the PERFORM page is up. A press we took
      * is always releases on the way up, even if the page changed first. */
@@ -1555,41 +1618,42 @@ int digictl_key(void *brain, void *ev)
         return 0;
     }
 
-    /* UP: from any DIGI page to the PERFORM page, and back. */
+    /* UP: from the FX tree to PERFORM + macros, and back to the FX page we
+     * came from (or FOLD). */
     if (id == DN_K_UP && (flags & 1) && !(flags & 0x10) && !(flags & 8)) {
-        if (k >= DN_FXKIND && k <= DN_WSKIND) {
-            idx = dc_find_kind(dc_view, DN_PFKIND);
-            if (idx >= 0) {
-                dc_perf_prev = *(int *)(dc_view + 144);
-                *(int *)(dc_view + 144) = idx;
-                DN_INVALIDATE(dc_view);
-                return 1;
+        int i;
+        for (i = 0; i < 6; i++)
+            if (dc_tree1[i] == k) {
+                dc_perf_prev = k;               /* remember the FX page */
+                return dc_goto(dc_view, DN_PFKIND);
             }
-        } else if (k == DN_PFKIND) {
-            v = *(int **)(dc_view + 124);
-            n = v ? (int)((*(int **)(dc_view + 128)) - v) : 0;
-            idx = dc_perf_prev;
-            if (idx < 0 || idx >= n)
-                idx = 0;
-            *(int *)(dc_view + 144) = idx;
-            DN_INVALIDATE(dc_view);
-            return 1;
-        }
+        for (i = 0; i < 5; i++)
+            if (dc_tree2[i] == k) {
+                int back = dc_perf_prev;
+                if (dc_find_kind(dc_view, back) < 0)
+                    back = dc_tree1[0];         /* default: FOLD */
+                return dc_goto(dc_view, back);
+            }
     }
 
     if (!(flags & 1) || (flags & 0x10) || (flags & 8))
         return 0;                               /* ignore key-repeat */
     if (id != 17 && id != 18)                   /* LEFT / RIGHT */
         return 0;
-    v = *(int **)(dc_view + 124);
-    n = (int)((*(int **)(dc_view + 128)) - v);
-    if (!v || n <= 0)
-        return 0;
-    idx = *(int *)(dc_view + 144);
-    if (idx < 0 || idx >= n)
-        idx = 0;
-    idx = (idx + (id == 18 ? 1 : n - 1)) % n;
-    *(int *)(dc_view + 144) = idx;
-    DN_INVALIDATE(dc_view);
-    return 1;
+    {
+        const int *t = 0;
+        int tn = 0, i, cur;
+        for (i = 0; i < 6; i++)
+            if (dc_tree1[i] == k) { t = dc_tree1; tn = 6; break; }
+        if (!t)
+            for (i = 0; i < 5; i++)
+                if (dc_tree2[i] == k) { t = dc_tree2; tn = 5; break; }
+        if (!t)
+            return 0;                           /* a stock page: the stock cycles it */
+        for (i = 0; i < tn; i++)
+            if (t[i] == k)
+                break;
+        cur = (i + (id == 18 ? 1 : tn - 1)) % tn;
+        return dc_goto(dc_view, t[cur]);
+    }
 }
