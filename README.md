@@ -1,6 +1,6 @@
 # Tone+FX — development source
 
-**A master effect suite for the Digitone mk1 / Digitone Keys (OS 1.43).**
+**A master effect suite for the Digitone mk1 / Digitone Keys (OS 1.43 and 1.44).**
 
 > This is the **development/source** repo (remote still named `RingTone`). The
 > **release** repo — built `.elemod`s, docs and packaged releases — is
@@ -11,7 +11,10 @@
 ![The RING page on the Digitone mk1](docs/img/ui-ring.png)
 
 Unofficial, community-made [elekloader](https://github.com/irpina/elekloader)
-mods for the **Elektron Digitone mk1 / Digitone Keys, OS 1.43**.
+mods for the **Elektron Digitone mk1 / Digitone Keys, OS 1.43 / 1.44**. (A
+community port of the same suite for the **Elektron Digitakt mk1, OS 1.53 /
+1.54** is maintained by **gdeo607** in `digi1_mods`, vendored in the release repo
+under `DIGITAKT PORT/`.)
 
 ## What it is
 
@@ -238,8 +241,9 @@ README's "Known bugs / future fixes").
 
 ## Parked / future work (branches + docs; NOT in the release)
 
-The current release (`Tone+FX` 3.5p) is the eleven-page suite (incl. PERFORM +
-the macros) + MIDI CC + the performance pass. These are parked for later:
+The current release (`Tone+FX` 3.5r) is the eleven-page suite (incl. PERFORM +
+the macros) + MIDI CC + the performance pass, shipped for Digitone OS 1.43/1.44
+and (ported by gdeo607) Digitakt OS 1.53/1.54. These are parked for later:
 
 - **Fuse the six master passes** into one loop (`perf-opt` #2) — real CPU back,
   but a six-module refactor whose win is margin-comparable to the landed items;
