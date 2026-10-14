@@ -589,7 +589,8 @@ static const int dc_kinds[DN_NPAGES] = {
 static char *dc_view;               /* the master view, from its last draw */
 static int dc_vis;                  /* frames since the master view was drawn */
 static int dc_meter_vis;            /* FOLD page (the meter reader) is up */
-static int dc_perf_prev;            /* page index to return to from PERF */
+static int dc_perf_prev = -1;       /* FX kind to return to from the macro tree */
+static int dc_func;                 /* FUNC held: encoder turns snap to 0/127 */
 static int dc_rate = 3;             /* ticks between redraws (animated pages) */
 static int dc_ctr;                  /* ticks since the last redraw */
 static int dc_eacc[10];             /* per-encoder accumulation (ids 0..9), as
@@ -699,6 +700,27 @@ static int dc_find_kind(char *view, int k)
         if (v[i] == k)
             return i;
     return -1;
+}
+
+/* The two page trees. LEFT/RIGHT cycle within the active tree; UP moves between
+ * them. Tree 1 = the FX pages, in play order (FOLD - CRUSH - RING - STEREO -
+ * PITCH - TILT); tree 2 = PERFORM + the four macros, reached with UP. PERFORM is
+ * not part of the tree-1 cycle. */
+static const int dc_tree1[6] = {
+    DN_FEKIND, DN_CRKIND, DN_FXKIND, DN_WSKIND, DN_WVKIND, DN_EQKIND
+};
+static const int dc_tree2[5] = {
+    DN_PFKIND, DN_WASHKIND, DN_RADKIND, DN_DESKIND, DN_SPCKIND
+};
+
+static int dc_goto(char *view, int kind)
+{
+    int pos = dc_find_kind(view, kind);
+    if (pos < 0)
+        return 0;
+    *(int *)(view + 144) = pos;
+    DN_INVALIDATE(view);
+    return 1;
 }
 
 static void add_page(char *view)
@@ -1458,6 +1480,8 @@ int digictl_enc(void *brain, void *ev)
     d = dc_steps(id, delta);
     if (!d)
         return 1;
+    if (dc_func)
+        d = (d > 0) ? 127 : -127;   /* FUNC + turn: snap the param to 100% / 0% */
 
     if (k == DN_FEKIND) {                /* FOLD: A on, D mode, E amount, H meter */
         switch (id) {
@@ -1557,11 +1581,16 @@ int digictl_key(void *brain, void *ev)
 {
     int id = *(int *)((char *)ev + 12);
     int flags = *(int *)((char *)ev + 16);
-    int k, *v, n, idx;
+    int k;
     (void)brain;
     if (!master_live(dc_view))
         return 0;
     k = cur_kind(dc_view);
+
+    if (id == 1) {                             /* FUNC: track, never consume */
+        dc_func = (flags & 1) != 0;
+        return 0;
+    }
 
     /* The trigs: momentary pads while the PERFORM page is up. A press we took
      * is always releases on the way up, even if the page changed first. */
@@ -1586,41 +1615,42 @@ int digictl_key(void *brain, void *ev)
         return 0;
     }
 
-    /* UP: from any DIGI page to the PERFORM page, and back. */
+    /* UP: from the FX tree to PERFORM + macros, and back to the FX page we
+     * came from (or FOLD). */
     if (id == DN_K_UP && (flags & 1) && !(flags & 0x10) && !(flags & 8)) {
-        if (k >= DN_FXKIND && k <= DN_WSKIND) {
-            idx = dc_find_kind(dc_view, DN_PFKIND);
-            if (idx >= 0) {
-                dc_perf_prev = *(int *)(dc_view + 144);
-                *(int *)(dc_view + 144) = idx;
-                DN_INVALIDATE(dc_view);
-                return 1;
+        int i;
+        for (i = 0; i < 6; i++)
+            if (dc_tree1[i] == k) {
+                dc_perf_prev = k;               /* remember the FX page */
+                return dc_goto(dc_view, DN_PFKIND);
             }
-        } else if (k == DN_PFKIND) {
-            v = *(int **)(dc_view + 124);
-            n = v ? (int)((*(int **)(dc_view + 128)) - v) : 0;
-            idx = dc_perf_prev;
-            if (idx < 0 || idx >= n)
-                idx = 0;
-            *(int *)(dc_view + 144) = idx;
-            DN_INVALIDATE(dc_view);
-            return 1;
-        }
+        for (i = 0; i < 5; i++)
+            if (dc_tree2[i] == k) {
+                int back = dc_perf_prev;
+                if (dc_find_kind(dc_view, back) < 0)
+                    back = dc_tree1[0];         /* default: FOLD */
+                return dc_goto(dc_view, back);
+            }
     }
 
     if (!(flags & 1) || (flags & 0x10) || (flags & 8))
         return 0;                               /* ignore key-repeat */
     if (id != 17 && id != 18)                   /* LEFT / RIGHT */
         return 0;
-    v = *(int **)(dc_view + 124);
-    n = (int)((*(int **)(dc_view + 128)) - v);
-    if (!v || n <= 0)
-        return 0;
-    idx = *(int *)(dc_view + 144);
-    if (idx < 0 || idx >= n)
-        idx = 0;
-    idx = (idx + (id == 18 ? 1 : n - 1)) % n;
-    *(int *)(dc_view + 144) = idx;
-    DN_INVALIDATE(dc_view);
-    return 1;
+    {
+        const int *t = 0;
+        int tn = 0, i, cur;
+        for (i = 0; i < 6; i++)
+            if (dc_tree1[i] == k) { t = dc_tree1; tn = 6; break; }
+        if (!t)
+            for (i = 0; i < 5; i++)
+                if (dc_tree2[i] == k) { t = dc_tree2; tn = 5; break; }
+        if (!t)
+            return 0;                           /* a stock page: the stock cycles it */
+        for (i = 0; i < tn; i++)
+            if (t[i] == k)
+                break;
+        cur = (i + (id == 18 ? 1 : tn - 1)) % tn;
+        return dc_goto(dc_view, t[cur]);
+    }
 }
