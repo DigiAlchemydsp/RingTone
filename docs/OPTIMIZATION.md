@@ -198,10 +198,13 @@ Ordered roughly by how much they bought.
   in a vector at `view+124`; `digictl` **appends** kinds 0–6 (RING, FOLD, TILT,
   CRUSH, PITCH, STEREO, PERFORM) after the stock pages and patches only the
   view's draw slot (`0x40199BBC`). No stock page is taken.
-- **The unused MIDI-track 64-byte block.** Each pattern's four MIDI tracks
-  leave `track+0x100` zero in all 128 slots and the OS never writes it;
-  `digictl` uses `pattern+0x1040` for the **"DGX1"** per-pattern store
-  (`v10`, 28 int16, 64 of 64 bytes — full).
+- **One reserved MIDI-track block.** The FX params are packed (1-7 bits each)
+  into MIDI track 4's 64-byte block at `pattern+0x1BB0` (`"DGX4"`, digictl 2.9),
+  on MIDI channel 16. It replaces the old blocks at
+  `pattern+0x1040/+0x1410` (MIDI channels 1-2), which a *configured* MIDI track
+  wrote, corrupting the stock data and our values. Only that one track is
+  touched, so channels 1-15 and the synth tracks are unaffected, and the params
+  save/reload with the pattern (see `docs/PATTERN-STORAGE.md`).
 - **The parked LFO bridge** (`digimod_dest`/`digimod_voice`, per-voice FLTR
   FREQ read at `0x80003544`) is kept in the store but has no page yet.
 - **The stock CC router** (`0x400ED94E`) is hooked once (`cc_glue.s`, `op:"jmp"`)
@@ -289,7 +292,7 @@ repo (`Tone+FX`) is cut from `main` only.
 | 4 | Meter gated on visibility | `digimeter_render_out` returns unless `digictl_meter_active()` — a weak hook (undefined in a standalone meter build) that is true only while the FOLD page, the sole reader of `digimeter_l/r`, is up | 26707 → **26791** (+84) | 25566 → 25570 (+4) | 908 → 915 | FOLD/RING/TILT screenshots identical; render worst −408 cyc | **landed** |
 | 11 | Hoist per-sample block-constant branches | Split `crush` BITS into dither / no-dither loops and `fold` into drive / no-drive loops (GCC does not loop-unswitch at `-O2`); when a section is bypassed its loop is unchanged | 26791 → **26983** (+192) | 25570 | 915 | fold+crush output bit-identical by construction; pages unchanged | **landed** |
 | 5 | Ceiling gated on "hot" | `digictl_limit_out` returned unless `dn_fx_hot()` — **REVERTED (audible)**: with every section off the raw mix can still exceed the knee, and skipping the limiter then hard-clips, so the limiter must run every block | 26983 → 27155 (+172) then **reverted** | 25570 | +13 then reverted | clipping heard on hardware when FX off | **reverted** |
-| 14 | Store-sync gating | `dn_store_sync` / `dn_store2_sync` compare the block only every 8th UI tick (dirty writes and pattern switches still immediate); the adopt guard still runs, ≤ 8 ticks later | 27155 → **27199** (+44) | 25570 → 25578 (+8) | 930 → 934 | pattern-store test PASS | **landed** |
+| 14 | Store-sync gating | `dn_store_sync` / `dn_store2_sync` compare the block only every 8th UI tick (dirty writes and pattern switches still immediate); the adopt guard still runs, ≤ 8 ticks later | 27155 → **27199** (+44) | 25570 → 25578 (+8) | 930 → 934 | pattern-store test PASS | **superseded** (digictl 2.8: the RAM-table store has no block to compare) |
 
 **Item 1 detail.** Before: `digictl.c` had **36** `DN_FILLRECT` call *sites*; the
 per-pixel glyph path (`dg_glyph`, used by every 2x mode name and the `<`/`>`
@@ -369,7 +372,9 @@ detected within 8 ticks. Measured over a 1 s session: instructions
 cycles neutral in `cftiming` (the removed loads/compares overlap the tick's
 stalls), so this is an instruction/bus-read win, not a cycle one. Persistence
 verified: `tests/digiemu_pattern_store.py` PASS (`DGX1` magic and marker survive,
-per-pattern switch works).
+per-pattern switch works). **(Superseded by digictl 2.8:** the store is now a
+mod-owned RAM table with no block to compare or adopt-guard; see
+`docs/PATTERN-STORAGE.md`.**)**
 
 ## 10. Feature / fix work on this branch
 

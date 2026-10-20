@@ -128,15 +128,18 @@ int digimod_voice = 1;               /* 1..8 */
 #endif
 #define DN_FREQ_REC(v) (*(volatile unsigned short *)(DN_FREQ_REC_ADDR + ((v) - 1) * 0x9E))
 
-/* ---- per-pattern storage -----------------------------------------------------
- * Our FX params have no stock field, so they are kept inside the saved pattern.
- * The project's patterns are a 0x1611D-byte struct array at 0x407FC414, one
- * struct per pattern; *0x4138E214 is the current one. The four MIDI tracks each
- * leave a 64-byte block unused at track_t+0x100 (the synth-voice area): it is
- * zero in all 128 slots and the OS's parameter mirror never writes it, but it
- * travels with the pattern. We keep our settings there (pattern + 0x1040), so
- * they follow a pattern switch / reload and survive a project save like stock
- * parameters. */
+/* ---- per-pattern storage (one reserved MIDI track) ---------------------------
+ * The FX params ride the saved pattern in ONE MIDI-track block: MIDI track 4
+ * (track_t 7, pattern + 0x1BB0). Reserve that track on MIDI channel 16; the
+ * store then touches only that track's 64 bytes, never the other MIDI tracks
+ * (channels 1-15) or the synth tracks. All 35 params are packed (1-7 bits
+ * each) so they fit the block.
+ *
+ * A "DGX4" magic + version guards the block: a block that still carries it was
+ * written by us (a pattern reload / switch) and is adopted; a block with no
+ * magic (a stock write) is reclaimed from the live values. The old blocks
+ * (DGX1/2 at pattern+0x1040/+0x1410) are never read or written again, so the
+ * MIDI tracks on channels 1-15 are left alone. */
 #ifndef DN_PAT_BASE
 #define DN_PAT_BASE   0x407FC414u
 #endif
@@ -145,28 +148,42 @@ int digimod_voice = 1;               /* 1..8 */
 #endif
 #define DN_PAT_STRIDE 0x1611Du
 #define DN_PAT_SLOTS  128u
-#define DN_STORE_OFF  0x1040u
-#define DN_STORE_N    28
-#define DN_STORE_VER  10
-#define DN_STORE_MAG(a) ((a)[0] == 0x44 && (a)[1] == 0x47 && \
-                         (a)[2] == 0x58 && (a)[3] == 0x31 && \
-                         (a)[5] == DN_STORE_VER)               /* "DGX1" v10 */
+
+#define DN_STORE_OFF  0x1BB0u           /* MIDI track 4 (t=7), reserved on CH 16 */
+#define DN_STORE_N    35
+#define DN_STORE_VER  1
+#define DN_STORE_LEN  64
+#define DN_STORE_MAG(a) ((a)[0] == 'D' && (a)[1] == 'G' && (a)[2] == 'X' && \
+                         (a)[3] == '4' && (a)[4] == DN_STORE_VER)
 
 static int *const dn_fxparam[DN_STORE_N] = {
-    &digiring_on, &digiring_depth, &digiring_freq,
-    &digieq_on, &digieq_lo, &digieq_hi,
-    &digifold_on, &digifold_amount, &digifold_mode,
+    /* ring */ &digiring_on, &digiring_depth, &digiring_freq,
+    /* eq */   &digieq_on, &digieq_lo, &digieq_hi,
+    /* fold */ &digifold_on, &digifold_amount, &digifold_mode,
     &digimeter_on, &digimod_dest, &digimod_voice,
-    &digicrush_on, &digicrush_mode, &digicrush_amount, &digicrush_tune,
-    &digiwave_on, &digiwave_son, &digiwave_pmode, &digiwave_smode, &digiwave_page,
-    &digiwave_speed, &digiwave_pdepth, &digiwave_sdepth,
+    /* crush */ &digicrush_on, &digicrush_mode, &digicrush_amount, &digicrush_tune,
+    /* wave */ &digiwave_on, &digiwave_son, &digiwave_pmode, &digiwave_smode,
+    &digiwave_page, &digiwave_speed, &digiwave_pdepth, &digiwave_sdepth,
     &digiwave_mix, &digiwave_fb,
-    &digiwash_on, &digiwash_amount,
+    /* wash */ &digiwash_on, &digiwash_amount,
+    /* macros */ &dgmac2_on, &dgmac2_amount, &dgmac3_on, &dgmac3_amount,
+    &dgmac4_on, &dgmac4_amount, &digiwave_pmix,
+};
+/* Bits per param, in dn_fxparam order: 1 for on/off and the mode switches,
+ * 7 for the 0..127 values, 3/4 for the parked LFO bridge. 166 bits -> 21
+ * bytes + a 7-byte header = 28 of the block's 64 bytes. */
+static const unsigned char dn_stbits[DN_STORE_N] = {
+    /* ring */ 1,7,7, /* eq */ 1,7,7, /* fold */ 1,7,7, /* meter */ 1,
+    /* lfo bridge */ 3,4,
+    /* crush */ 1,7,7,7,
+    /* wave */ 1,1,7,7,1, 7,7,7, 7,7,
+    /* wash */ 1,7,
+    /* macros */ 1,7, 1,7, 1,7, 7
 };
 
 static unsigned char *dn_store_blk;             /* block we last synced */
-static unsigned char dn_store_copy[8 + 2 * DN_STORE_N];
-static int dn_store_dirty;                      /* a page edit is pending */
+static unsigned char dn_store_copy[DN_STORE_LEN];
+static int dn_store_dirty;                      /* a page/CC edit is pending */
 static int dn_sync_ph;                          /* ticks between block compares */
 
 static unsigned char *dn_store_slot(void)
@@ -178,28 +195,45 @@ static unsigned char *dn_store_slot(void)
     return (unsigned char *)(p + DN_STORE_OFF);
 }
 
+/* DN_STORE_N params, dn_stbits[i] bits each, little-endian bitstream after b[7]. */
 static void dn_store_read(const unsigned char *b)
 {
-    int i;
-    for (i = 0; i < DN_STORE_N; i++)
-        *dn_fxparam[i] = (short)((b[8 + 2 * i] << 8) | b[9 + 2 * i]);
+    unsigned acc = 0;
+    int nbits = 0, i, o = 7;
+    for (i = 0; i < DN_STORE_N; i++) {
+        int w = dn_stbits[i];
+        while (nbits < w) { acc |= (unsigned)b[o++] << nbits; nbits += 8; }
+        *dn_fxparam[i] = (int)(acc & ((1u << w) - 1u));
+        acc >>= w;
+        nbits -= w;
+    }
 }
 
 static void dn_store_write(unsigned char *b)
 {
-    int i;
-    b[0] = 0x44; b[1] = 0x47; b[2] = 0x58; b[3] = 0x31;   /* "DGX1" */
-    b[4] = 0; b[5] = DN_STORE_VER;                        /* version */
-    b[6] = (DN_STORE_N >> 8) & 0xff; b[7] = DN_STORE_N & 0xff;
+    unsigned acc = 0;
+    int nbits = 0, i, o = 7;
+    b[0] = 'D'; b[1] = 'G'; b[2] = 'X'; b[3] = '4';       /* "DGX4" */
+    b[4] = DN_STORE_VER;
+    b[5] = (DN_STORE_N >> 8) & 0xff; b[6] = DN_STORE_N & 0xff;
     for (i = 0; i < DN_STORE_N; i++) {
-        int v = *dn_fxparam[i];
-        b[8 + 2 * i] = (unsigned char)((v >> 8) & 0xff);
-        b[9 + 2 * i] = (unsigned char)(v & 0xff);
+        int w = dn_stbits[i];
+        acc |= (unsigned)(*dn_fxparam[i] & ((1u << w) - 1u)) << nbits;
+        nbits += w;
+        while (nbits >= 8) {
+            b[o++] = (unsigned char)(acc & 0xff);
+            acc >>= 8;
+            nbits -= 8;
+        }
     }
+    if (nbits)
+        b[o++] = (unsigned char)(acc & 0xff);
+    while (o < DN_STORE_LEN)
+        b[o++] = 0;                                       /* clear the tail */
 }
 
-/* Once a UI frame: follow a pattern switch, persist a page edit, and adopt an
- * external change (a pattern reload) the OS made behind us. */
+/* Once a UI frame: follow a pattern switch, persist a page edit, and adopt a
+ * genuine pattern block (a reload/switch) while reclaiming a stock write. */
 static void dn_store_sync(void)
 {
     unsigned char *b = dn_store_slot();
@@ -210,17 +244,15 @@ static void dn_store_sync(void)
         if (dn_store_dirty) {
             dn_store_write(b);
         } else if (dn_sync_ph++ & 7) {
-            return;                          /* nothing pending and no pattern
-                                              * switch: compare only every 8th
-                                              * tick (the adopt guard stays) */
+            return;                          /* nothing pending, same pattern:
+                                              * compare only every 8th tick */
         } else {
-            for (i = 0; i < 8 + 2 * DN_STORE_N; i++)
+            for (i = 0; i < DN_STORE_LEN; i++)
                 if (b[i] != dn_store_copy[i])
                     break;
-            if (i < 8 + 2 * DN_STORE_N) {    /* the block changed: only adopt
-                                              * it if it is still ours. A stock
-                                              * write here must NOT reach our
-                                              * params -- reclaim the block. */
+            if (i < DN_STORE_LEN) {          /* the block changed: adopt only a
+                                              * genuine one; a stock write is
+                                              * reclaimed, not read. */
                 if (DN_STORE_MAG(b))
                     dn_store_read(b);
                 else
@@ -235,90 +267,8 @@ static void dn_store_sync(void)
             dn_store_write(b);               /* new pattern: adopt live values */
     }
     dn_store_dirty = 0;
-    for (i = 0; i < 8 + 2 * DN_STORE_N; i++)
+    for (i = 0; i < DN_STORE_LEN; i++)
         dn_store_copy[i] = b[i];
-}
-
-/* ---- second per-pattern block: the extra macros (RADIO / DESTROY / SPACE) ----
- * Block 1 (pattern+0x1040) is full (28 params); this is MIDI track 1's unused
- * 64-byte block (pattern+0x1410), same idea, magic "DGX2". */
-#define DN_STORE2_OFF  0x1410u
-#define DN_STORE2_N    7
-#define DN_STORE2_VER  2
-#define DN_STORE2_MAG(a) ((a)[0] == 0x44 && (a)[1] == 0x47 && \
-                          (a)[2] == 0x58 && (a)[3] == 0x32 && \
-                          (a)[5] == DN_STORE2_VER)              /* "DGX2" v1 */
-
-static int *const dn_fxparam2[DN_STORE2_N] = {
-    &dgmac2_on, &dgmac2_amount, &dgmac3_on, &dgmac3_amount,
-    &dgmac4_on, &dgmac4_amount, &digiwave_pmix,
-};
-static unsigned char *dn_store2_blk;
-static unsigned char dn_store2_copy[8 + 2 * DN_STORE2_N];
-static int dn_store2_dirty;
-static int dn_sync2_ph;                         /* ticks between block compares */
-
-static unsigned char *dn_store2_slot(void)
-{
-    unsigned p = *(volatile unsigned *)DN_PAT_PTR;
-    if (p < DN_PAT_BASE ||
-        p >= DN_PAT_BASE + (unsigned)DN_PAT_SLOTS * DN_PAT_STRIDE)
-        return 0;
-    return (unsigned char *)(p + DN_STORE2_OFF);
-}
-
-static void dn_store2_read(const unsigned char *b)
-{
-    int i;
-    for (i = 0; i < DN_STORE2_N; i++)
-        *dn_fxparam2[i] = (short)((b[8 + 2 * i] << 8) | b[9 + 2 * i]);
-}
-
-static void dn_store2_write(unsigned char *b)
-{
-    int i;
-    b[0] = 0x44; b[1] = 0x47; b[2] = 0x58; b[3] = 0x32;   /* "DGX2" */
-    b[4] = 0; b[5] = DN_STORE2_VER;
-    b[6] = (DN_STORE2_N >> 8) & 0xff; b[7] = DN_STORE2_N & 0xff;
-    for (i = 0; i < DN_STORE2_N; i++) {
-        int v = *dn_fxparam2[i];
-        b[8 + 2 * i] = (unsigned char)((v >> 8) & 0xff);
-        b[9 + 2 * i] = (unsigned char)(v & 0xff);
-    }
-}
-
-static void dn_store2_sync(void)
-{
-    unsigned char *b = dn_store2_slot();
-    int i;
-    if (!b)
-        return;
-    if (b == dn_store2_blk) {
-        if (dn_store2_dirty) {
-            dn_store2_write(b);
-        } else if (dn_sync2_ph++ & 7) {
-            return;                          /* compare only every 8th tick */
-        } else {
-            for (i = 0; i < 8 + 2 * DN_STORE2_N; i++)
-                if (b[i] != dn_store2_copy[i])
-                    break;
-            if (i < 8 + 2 * DN_STORE2_N) {
-                if (DN_STORE2_MAG(b))
-                    dn_store2_read(b);
-                else
-                    dn_store2_write(b);
-            }
-        }
-    } else {
-        dn_store2_blk = b;
-        if (DN_STORE2_MAG(b))
-            dn_store2_read(b);
-        else
-            dn_store2_write(b);
-    }
-    dn_store2_dirty = 0;
-    for (i = 0; i < 8 + 2 * DN_STORE2_N; i++)
-        dn_store2_copy[i] = b[i];
 }
 
 static int clampi(int v, int lo, int hi);
@@ -1546,7 +1496,6 @@ void digictl_tick(void *ctrl)
 {
     (void)ctrl;
     dn_store_sync();
-    dn_store2_sync();
     if (dc_act_ttl > 0) {
         dc_act_ttl--;
         if (!dc_act_ttl && dc_view_open(dc_view))
@@ -1666,7 +1615,6 @@ int digictl_enc(void *brain, void *ev)
             *po = (d > 0);
         else if (id >= 2 && id <= 8)
             *pa = clampi(*pa + d, 0, 127);
-        dn_store2_dirty = 1;                            /* persist with the pattern */
     } else if (k == DN_PFKIND) {         /* PERF: one depth per block */
         switch (id) {
         case 1: digiring_depth = clampi(digiring_depth + d, 0, 127); break;
