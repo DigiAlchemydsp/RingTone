@@ -1,11 +1,11 @@
 {
  "id": "tonefx",
- "version": "3.5r",
+ "version": "4.0c",
  "title": "Tone+FX",
  "category": "Sound",
  "author": "Digital Alchemy DSP",
  "license": "GPL-2.0-or-later",
- "description": "The Tone+FX suite as one elemod: master ring modulator (digiring), a low-shelf/high-shelf master EQ (digieq), a wavefolder with a continuous CLEAN/MUD/DIST/TRSH fold type and an internal hard-clip overdrive on DIST/TRSH (digifold), a Crunch/Redux lo-fi stage (digicrush), a five-mode modulation insert WOB/SHFT/FLAN/PAN/WIDE (digiwave), output meter (digimeter) and the DIGI RING / DIGI FOLD / DIGI TILT / DIGI CRUSH / DIGI WAVE / PERFORM master pages with all their controls (digictl). The PERFORM page is a static (non-animated) touch page reached with UP from any DIGI page: eight encoders set one depth per FX engine, and the 16 trigs are momentary performance pads, one block per engine with increasing intensities (ring / fold / crush / pitch / stereo), that ramp their engine's depth up while held and restore the saved pattern value on release, without ever writing the per-pattern store. The WAVE engine has separate PITCH and STEREO depths (digiwave_pdepth / digiwave_sdepth). Plus the TONE+FX boot splash (tonesplash: an animated wordmark drawn at the intro, one of three animations per boot). Settings are kept per pattern in one reserved MIDI track (channel 16), packed into its pattern block, and the FX respond to incoming MIDI CC. It REQUIRES the core (core-dn1) and does not include it, so it combines with any other elekloader mods.",
+ "description": "Tone+FX 4.0: the Tone+FX suite plus ONE dedicated delay line appended at the end of the chain that serves two modes (like digiwave's modes on its own line): WRMZ (a modulated delay) and GRAINZ (a grain-ish cloud of three drifting taps on the same line - no history ring, no head pool). Edited on one DELAYS page (kind 11, the D encoder switches the mode). Params are kept per pattern in one reserved MIDI track (channel 16), packed into its pattern block, and respond to MIDI CC 80-87. The suite's output ceiling and meter run last. The delay line is mono (widen externally) and true-bypasses when off. It REQUIRES the core (core-dn1 4.0) and does not include it.",
  "device": "digitone-mk1",
  "os": "1.43",
  "sources": [
@@ -15,6 +15,7 @@
   "../digifold/fold.c",
   "../digicrush/crush.c",
   "../digiwave/wave.c",
+  "../digiwrmz/wrmz.c",
   "../digictl/digictl.c",
   "../digictl/cc_glue.s",
   "splash.s",
@@ -25,6 +26,7 @@
   "SPLASH_DIFF": "0x400f8efa",
   "SPLASH_FLUSH": "0x400f8e7c"
  },
+ "cflags": ["-DBX_EMAC_HOISTED=1", "-DBX_S16_LINE=1", "-Os"],
  "sites": [
   {"addr": "0x40199bbc", "stock": "4004ddae", "op": "ptr", "target": "digictl_mdraw"},
   {"addr": "0x400ED94E", "stock": "4fefffe87008", "op": "jmp", "target": "digictl_cc_disp"},
@@ -46,6 +48,9 @@
     "SPLASH_FLUSH": "0x400f90f0"
    },
    "cflags": [
+    "-DBX_EMAC_HOISTED=1",
+    "-DBX_S16_LINE=1",
+    "-Os",
     "-DDN_TEXTF_ADDR=0x400DE0DC",
     "-DDN_FONT5_ADDR=0x402319C8",
     "-DDN_INVALIDATE_ADDR=0x400E539E",
@@ -87,13 +92,18 @@
   {"event": "ev_render_in",  "fn": "digimeter_render_in",   "order": 50},
   {"event": "ev_render_in",  "fn": "digicrush_render_in",   "order": 50},
   {"event": "ev_render_in",  "fn": "digiwave_render_in",    "order": 50},
+  {"event": "ev_render_in",  "fn": "digiwrmz_render_in",    "order": 50},
+  {"event": "ev_render_out", "fn": "digictl_macsr_begin",    "order": 49},
   {"event": "ev_render_out", "fn": "digiring_render_out",    "order": 50},
   {"event": "ev_render_out", "fn": "digieq_render_out",      "order": 55},
   {"event": "ev_render_out", "fn": "digicrush_render_out",   "order": 57},
   {"event": "ev_render_out", "fn": "digifold_render_out",    "order": 60},
-  {"event": "ev_render_out", "fn": "digiwave_render_out",    "order": 62},
+  {"event": "ev_render_out", "fn": "digiwave_pitch_render_out",  "order": 61},
+  {"event": "ev_render_out", "fn": "digiwrmz_render_out",        "order": 62},
+  {"event": "ev_render_out", "fn": "digiwave_stereo_render_out", "order": 63},
   {"event": "ev_render_out", "fn": "digictl_limit_out",      "order": 64},
   {"event": "ev_render_out", "fn": "digimeter_render_out",   "order": 65},
+  {"event": "ev_render_out", "fn": "digictl_macsr_end",      "order": 74},
   {"event": "ev_tick",       "fn": "digictl_tick",          "order": 40},
   {"event": "ev_tick",       "fn": "digimeter_tick",        "order": 60},
   {"event": "ev_enc",        "fn": "digictl_enc",           "order": 40},
@@ -101,6 +111,7 @@
  ],
  "requires": ["core"],
  "resources": {
+  "core": "4.0",
   "names": [
    "ui:master page DIGI RING",
    "ui:master DIGI FOLD",
@@ -110,7 +121,9 @@
    "ui:master wavefolder",
    "ui:master DIGI CRUSH",
    "ui:master DIGI WAVE",
-   "ui:master PERFORM"
+   "ui:master PERFORM",
+   "ui:master WRMZ",
+   "ui:master DELAYS"
   ]
  }
 }

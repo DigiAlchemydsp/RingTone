@@ -18,6 +18,7 @@
  * Subscriptions only: it combines with every mod. Ring -> EQ -> FOLD.
  */
 #include "../../src/corea.h"
+#include "../../src/emac.h"
 
 #define DF_T    (1u << 22)          /* fold threshold / clip ceiling */
 #define DF_2T   (1u << 23)
@@ -69,9 +70,9 @@ static inline int df_fold(int x, unsigned gain)
 {
     int s = x < 0 ? -1 : 1;
     unsigned a = x < 0 ? (unsigned)(-x) : (unsigned)x;
-    /* full-precision Q8 gain: the truncated form zeroed the low 8 bits even at
-     * amount 0, which was noise; amount 0 is now bypassed entirely below. */
-    a = (a >> 8) * gain + (((a & 0xffu) * gain) >> 8);
+    /* full-precision Q8 gain on the eMAC (bx_q8): the truncated form zeroed the
+     * low 8 bits even at amount 0, which was noise; amount 0 is bypassed below. */
+    a = (unsigned)bx_q8((int)a, (int)gain);
     a &= (DF_2T - 1u);                  /* |x| mod 2T */
     if (a > DF_T)
         a = DF_2T - a;                  /* reflect into [0, T] */
@@ -81,7 +82,7 @@ static inline int df_fold(int x, unsigned gain)
 /* hard-clip overdrive: a Q8 gain into a clamp at +/-T (odd, stateless) */
 static inline int df_drive(int x, unsigned g)
 {
-    int y = (x >> 8) * g + (((x & 0xffu) * g) >> 8);
+    int y = bx_q8(x, (int)g);
     if (y > (int)DF_T)
         return (int)DF_T;
     if (y < -(int)DF_T)
@@ -104,6 +105,7 @@ void digifold_render_out(void)
     gain = df_gain(fp, df_amt_cur);
     dg = df_drive_gain(dp, df_amt_cur);
     p = (int *)(DN_OUT_BASE + df_off);
+    bx_emac_enter();                    /* the Q8 gains ride the eMAC */
     if (dg) {                           /* overdrive is block-constant: split the
                                          * loop so the branch is not tested 32x */
         for (i = 0; i < DN_OUT_FRAMES; i++) {
@@ -118,4 +120,5 @@ void digifold_render_out(void)
             p += 2;
         }
     }
+    bx_emac_leave();
 }

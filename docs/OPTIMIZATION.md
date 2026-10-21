@@ -1,11 +1,18 @@
 # Tone+FX — DSP, CPU and footprint notes (Digitone mk1, OS 1.43)
 
+> **4.0 note:** this file documents the 3.5r suite. The 4.0a–4.0c line (DELAYS,
+> eMAC round, s16 lines, store 2.9, permanent chain, WASH CPU) is in
+> [`OPTIMIZATION-ROUND.md`](OPTIMIZATION-ROUND.md), with §13 for 4.0b/4.0c.
+> Current package: `tonefx 4.0c` (`.run 25,594`, `.bss 47,182`, 970 relocs,
+> `imports nothing`).
+
 What the suite's code does, how it is built, the fixed-point conventions, the
 optimization methods used (and why), what is repurposed from the stock OS and
 from RingTone, and the RAM / flash / headroom ledger. This is the technical
-companion to `HANDOFF.md`; `DSP.md` is the address/architecture reference.
+companion to the release `HANDOFF.md`; `DSP.md` is the address/architecture
+reference.
 
-Current package: `tonefx 3.5r` (`.run 28561`, `.bss 19446`, `imports nothing`).
+Historical (3.5r): `.run 28561`, `.bss 19446`, `imports nothing`.
 The `perf-opt` ledger is §9, the fixes that landed with it are §10, and the
 3.5r UI/control rework is §11.
 

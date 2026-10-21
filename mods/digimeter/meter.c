@@ -23,12 +23,22 @@ static volatile unsigned dm_off;
 static volatile int dm_peak_l, dm_peak_r;
 static int dm_hold_l, dm_hold_r;
 
-/* peak -> 0..60 on a log scale (floor(log2(peak)) over a 31-bit sample) */
+/* peak -> 0..60 on a log scale (floor(log2(peak)) over a 31-bit sample).
+ * ISA-C ff1 gives the leading-zero count in one instruction instead of the
+ * shift loop: floor(log2(x)) = 31 - ff1(x). */
 static int dm_bar(int peak)
 {
-    int b = 0;
-    if (peak <= 1) return 0;
+    int b;
+    if (peak <= 1)
+        return 0;
+#if defined(__mcoldfire__)
+    b = peak;
+    __asm__ volatile("ff1.l %0" : "+d"(b));
+    b = 31 - b;
+#else
+    b = 0;
     while (peak > 1) { peak >>= 1; b++; }
+#endif
     b = b * 60 / 31;
     return b > 60 ? 60 : b;
 }
